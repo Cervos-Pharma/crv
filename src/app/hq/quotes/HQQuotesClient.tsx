@@ -185,7 +185,7 @@ export default function HQQuotesClient({ quotes }: { quotes: Quote[] }) {
                         Mark contacted
                       </button>
                     )}
-                    {isContacted && status !== "invited" && (
+                    {isContacted && (optimistic[q.id] ?? q.status) !== "invited" && (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleInviteSupplier(q); }}
                         className="text-secondary font-label-md text-label-md text-sm hover:underline flex items-center gap-1"

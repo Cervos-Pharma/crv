@@ -26,6 +26,8 @@ export interface SupplierProduct {
   leadTimeDays: number;
   /** Whether the supplier is verified by Cervos HQ */
   verified: boolean;
+  /** The supplying supplier's account ID */
+  supplierId: string;
 }
 
 interface QuoteItem {

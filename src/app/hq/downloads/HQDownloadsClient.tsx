@@ -86,7 +86,7 @@ export default function HQDownloadsClient({ releases: initialReleases }: HQDownl
     // Validate file extension matches selected platform
     const platformConfig = PLATFORMS.find((p) => p.value === platform);
     const fileExt = selectedFile.name.substring(selectedFile.name.lastIndexOf(".")).toLowerCase();
-    const isValidExt = platformConfig?.ext.includes(fileExt as `.${string}`);
+    const isValidExt = platformConfig?.ext.some((e) => fileExt === e);
     if (!isValidExt) {
       setToast({
         message: `Invalid file type for ${platformConfig?.label}. Expected ${platformConfig?.ext.join(", ")}, got ${fileExt}.`,

@@ -2342,7 +2342,7 @@ export async function getSubscriptionPlans(): Promise<{ data: SubscriptionPlan[]
     price_annual_tzs: Number(p.price_annual_tzs) || 0,
     max_branches: p.max_branches ?? 1,
     max_operators: p.max_operators ?? 5,
-    features: Array.isArray(p.features) ? p.features.map((f) => String(f)) : [],
+    features: Array.isArray(p.features) ? p.features.map((f: unknown) => String(f)) : [],
   }));
 
   return { data: plans, error: null };
@@ -2648,9 +2648,10 @@ export async function recordManualPayment(
 
   if (error) return { error: error.message };
 
+  const { data: acct } = await supabase.from("accounts").select("ltv").eq("id", accountId).maybeSingle();
   await supabase
     .from("accounts")
-    .update({ billing_status: "active", ltv: supabase.sql`ltv + ${amountTzs}` })
+    .update({ billing_status: "active", ltv: (acct?.ltv ?? 0) + amountTzs })
     .eq("id", accountId);
 
   return { error: null };
@@ -2756,7 +2757,7 @@ export async function getAllNewsPosts(): Promise<{ data: NewsPost[] | null; erro
     cover_image_url: p.cover_image_url ?? null,
     author_name: p.author_name ?? "Cervos Team",
     category: p.category ?? "Company",
-    tags: Array.isArray(p.tags) ? p.tags.map((t) => String(t)) : [],
+    tags: Array.isArray(p.tags) ? p.tags.map((t: unknown) => String(t)) : [],
     published: Boolean(p.published),
     published_at: p.published_at ?? null,
     created_at: p.created_at,
@@ -2789,7 +2790,7 @@ export async function getPublishedNewsPosts(): Promise<{ data: NewsPost[] | null
     cover_image_url: p.cover_image_url ?? null,
     author_name: p.author_name ?? "Cervos Team",
     category: p.category ?? "Company",
-    tags: Array.isArray(p.tags) ? p.tags.map((t) => String(t)) : [],
+    tags: Array.isArray(p.tags) ? p.tags.map((t: unknown) => String(t)) : [],
     published: Boolean(p.published),
     published_at: p.published_at ?? null,
     created_at: p.created_at,
@@ -2826,7 +2827,7 @@ export async function getNewsPostBySlug(slug: string): Promise<{ data: NewsPost 
     cover_image_url: data.cover_image_url ?? null,
     author_name: data.author_name ?? "Cervos Team",
     category: data.category ?? "Company",
-    tags: Array.isArray(data.tags) ? data.tags.map((t) => String(t)) : [],
+    tags: Array.isArray(data.tags) ? data.tags.map((t: unknown) => String(t)) : [],
     published: Boolean(data.published),
     published_at: data.published_at ?? null,
     created_at: data.created_at,
