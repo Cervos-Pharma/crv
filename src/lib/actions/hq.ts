@@ -1937,11 +1937,6 @@ export interface RevenueMetrics {
   topAccountsByRevenue: { accountId: string; name: string; revenue: number }[];
 }
 
-function periodStartIso(days: number): string {
-  if (!days || days <= 0) return "1970-01-01T00:00:00.000Z";
-  return new Date(Date.now() - days * 86400000).toISOString();
-}
-
 function monthStartIso(): string {
   const d = new Date();
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString();
