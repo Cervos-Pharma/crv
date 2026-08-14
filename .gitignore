@@ -33,3 +33,5 @@ Thumbs.db
 # Local config
 .local/
 .config/
+
+.vercel

@@ -1,0 +1,5 @@
+cervos-desktop
+cervos-supplier-desktop
+.git
+node_modules
+*.log

@@ -1,0 +1,212 @@
+let db: any = null;
+let SQL: any = null;
+
+const DB_KEY = "cervos_db";
+
+export async function initDb(): Promise<void> {
+  if (db) return;
+  const initSqlJs = (await import("sql.js")).default;
+  SQL = await initSqlJs();
+
+  const savedDb = localStorage.getItem(DB_KEY);
+  if (savedDb) {
+    const data = Uint8Array.from(atob(savedDb), (c) => c.charCodeAt(0));
+    db = new SQL.Database(data);
+  } else {
+    db = new SQL.Database();
+  }
+
+  await runMigrations();
+  saveDb();
+}
+
+function saveDb(): void {
+  if (!db) return;
+  const data = db.export();
+  const binary = String.fromCharCode(...data);
+  localStorage.setItem(DB_KEY, btoa(binary));
+}
+
+async function runMigrations(): Promise<void> {
+  if (!db) return;
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS branches (
+      id TEXT PRIMARY KEY,
+      account_id TEXT,
+      name TEXT NOT NULL,
+      lat REAL,
+      lng REAL,
+      subscription_status TEXT DEFAULT 'trial',
+      trial_ends_at TEXT,
+      payment_due_at TEXT,
+      grace_ends_at TEXT,
+      last_synced_at TEXT,
+      updated_at TEXT
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS products (
+      id TEXT PRIMARY KEY,
+      generic_name TEXT NOT NULL,
+      brand_name TEXT,
+      category TEXT,
+      requires_prescription INTEGER DEFAULT 0,
+      barcode TEXT,
+      updated_at TEXT
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS batches (
+      id TEXT PRIMARY KEY,
+      branch_id TEXT,
+      product_id TEXT NOT NULL,
+      quantity INTEGER DEFAULT 0,
+      cost_price REAL DEFAULT 0,
+      sale_price REAL DEFAULT 0,
+      expiry_date TEXT,
+      sync_version INTEGER DEFAULT 1,
+      FOREIGN KEY (product_id) REFERENCES products(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS operators (
+      id TEXT PRIMARY KEY,
+      branch_id TEXT,
+      name TEXT NOT NULL,
+      pin_hash TEXT,
+      role TEXT DEFAULT 'operator',
+      created_at TEXT
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sales (
+      id TEXT PRIMARY KEY,
+      branch_id TEXT,
+      operator_id TEXT,
+      total REAL DEFAULT 0,
+      discount REAL DEFAULT 0,
+      tax REAL DEFAULT 0,
+      tender REAL DEFAULT 0,
+      change_due REAL DEFAULT 0,
+      payment_method TEXT,
+      payment_ref TEXT,
+      created_at TEXT,
+      synced INTEGER DEFAULT 0,
+      sync_error TEXT
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sale_items (
+      id TEXT PRIMARY KEY,
+      sale_id TEXT NOT NULL,
+      batch_id TEXT NOT NULL,
+      quantity INTEGER DEFAULT 0,
+      unit_price REAL DEFAULT 0,
+      FOREIGN KEY (sale_id) REFERENCES sales(id),
+      FOREIGN KEY (batch_id) REFERENCES batches(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS receipts (
+      id TEXT PRIMARY KEY,
+      sale_id TEXT NOT NULL,
+      receipt_number TEXT NOT NULL,
+      created_at TEXT,
+      FOREIGN KEY (sale_id) REFERENCES sales(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS shifts (
+      id TEXT PRIMARY KEY,
+      branch_id TEXT,
+      operator_id TEXT,
+      opened_at TEXT,
+      closed_at TEXT,
+      expected_cash REAL DEFAULT 0,
+      counted_cash REAL,
+      synced INTEGER DEFAULT 0
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS activity_log (
+      id TEXT PRIMARY KEY,
+      branch_id TEXT,
+      operator_id TEXT,
+      actor TEXT,
+      action TEXT,
+      entity_type TEXT,
+      entity_id TEXT,
+      detail TEXT,
+      created_at TEXT,
+      synced INTEGER DEFAULT 0
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sync_queue (
+      id TEXT PRIMARY KEY,
+      table_name TEXT,
+      row_id TEXT,
+      operation TEXT,
+      payload TEXT,
+      created_at TEXT,
+      attempts INTEGER DEFAULT 0
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      kind TEXT,
+      title TEXT,
+      body TEXT,
+      route TEXT,
+      action TEXT,
+      admin_only INTEGER DEFAULT 0,
+      read INTEGER DEFAULT 0,
+      created_at TEXT
+    )
+  `);
+}
+
+export async function Fe(sql: string, params: any[] = []): Promise<any[]> {
+  if (!db) await initDb();
+  const stmt = db.prepare(sql);
+  if (params.length > 0) stmt.bind(params);
+  const results: any[] = [];
+  while (stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+  stmt.free();
+  return results;
+}
+
+export async function Pe(sql: string, params: any[] = []): Promise<void> {
+  if (!db) await initDb();
+  db.run(sql, params);
+  saveDb();
+}
+
+export function Et(): string {
+  return crypto.randomUUID();
+}
+
+export function Mt(): string {
+  return new Date().toISOString();
+}
