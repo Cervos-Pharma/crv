@@ -36,7 +36,9 @@ export default function Settings() {
     setIsSyncing(true)
     setSyncMessage('')
     try {
-      const { data: sessionData } = await (await import('../lib/sync')).then(m => m.getSupabase()).auth.getSession()
+      const sync = await import('../lib/sync')
+      const supabase = sync.getSupabase()
+      const { data: sessionData } = await supabase.auth.getSession()
       if (!sessionData.session) {
         setSyncMessage('Not linked to server.')
         return
@@ -45,27 +47,23 @@ export default function Settings() {
       if (!branchResult.length) { setSyncMessage('No branch set.'); return }
       const branchId = JSON.parse(branchResult[0].value)
 
-      const { getSupabase } = await import('../lib/sync')
-      const supabase = getSupabase()
-      const lastPull = await (await import('../lib/sync')).then(m => m.q0(branchId))
+      const lastPull = await sync.q0(branchId)
       const since = lastPull || '1970-01-01T00:00:00Z'
 
       const serverUrl = (window as any).__SUPABASE_URL__
-      const anonKey = (window as any).__SUPABASE_ANON_KEY__
       const res = await fetch(`${serverUrl}/functions/v1/sync?since=${encodeURIComponent(since)}`, {
         headers: { Authorization: `Bearer ${sessionData.session.access_token}` }
       })
       if (!res.ok) throw new Error(`Sync failed: ${res.status}`)
       const data = await res.json()
 
-      const { syncSubscription } = await import('../lib/sync')
-      await syncSubscription(branchId)
+      await sync.syncSubscription(branchId)
 
       const now = new Date().toISOString()
-      await (await import('../lib/sync')).then(m => m.K0(branchId, now))
-      await (await import('../lib/sync')).then(m => m.Xd('last_synced_at', now))
+      await sync.K0(branchId, now)
+      await sync.Xd('last_synced_at', now)
 
-      const s = await (await import('../lib/sync')).then(m => m.np())
+      const s = await sync.np()
       setStats(s)
       setSyncMessage(`Synced ${data.records ?? 0} records at ${new Date().toLocaleTimeString()}`)
     } catch (err: any) {
