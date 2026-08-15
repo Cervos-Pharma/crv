@@ -154,43 +154,40 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
       const mountGlobe = (GlobeFn: (opts?: Record<string, unknown>) => GlobeInstance) => {
         if (!isMounted || !container) return;
 
+        let instance: GlobeInstance;
         try {
-          const instance: GlobeInstance = GlobeFn({});
-
-          instance
-            .globeImageUrl("https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg")
-            .bumpImageUrl("https://unpkg.com/three-globe/example/img/earth-topology.png")
-            .backgroundImageUrl("https://unpkg.com/three-globe/example/img/night-sky.png")
-            .pointsData(validPoints)
-            .pointLat("lat")
-            .pointLng("lng")
-            .pointColor((p: BranchPoint) => STATUS_COLORS[p.status] ?? "#6750A4")
-            .pointAltitude(0.01)
-            .pointRadius(0.4)
-            .pointLabel((p: BranchPoint) =>
-              `<div style="font-family:sans-serif;color:#222;padding:8px;min-width:140px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-                <strong>${p.name}</strong><br/>
-                <span style="color:#666;font-size:12px">${p.accountName}</span><br/>
-                <span style="color:${STATUS_COLORS[p.status]};font-size:11px;font-weight:600">${p.status.toUpperCase().replace("_", " ")}</span>
-              </div>`
-            )
-            .onGlobeReady(() => {
-              if (isMounted) {
-                instance.autoRotate(0.3);
-                globeInstanceRef.current = instance;
-              }
-            })
-            .onError((err: string) => {
-              console.warn("Globe error:", err);
-            });
-          } catch (e) {
-            if (isMounted) {
-              setGlobeError("WebGL not available on this device. Please use the 2D map view.");
-            }
-          }
-        } catch (e) {
+          instance = GlobeFn({});
+        } catch (_) {
           if (isMounted) setGlobeError("Failed to initialize 3D globe. Please use 2D map.");
+          return;
         }
+
+        instance
+          .globeImageUrl("https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg")
+          .bumpImageUrl("https://unpkg.com/three-globe/example/img/earth-topology.png")
+          .backgroundImageUrl("https://unpkg.com/three-globe/example/img/night-sky.png")
+          .pointsData(validPoints)
+          .pointLat("lat")
+          .pointLng("lng")
+          .pointColor((p: BranchPoint) => STATUS_COLORS[p.status] ?? "#6750A4")
+          .pointAltitude(0.01)
+          .pointRadius(0.4)
+          .pointLabel((p: BranchPoint) =>
+            `<div style="font-family:sans-serif;color:#222;padding:8px;min-width:140px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
+              <strong>${p.name}</strong><br/>
+              <span style="color:#666;font-size:12px">${p.accountName}</span><br/>
+              <span style="color:${STATUS_COLORS[p.status]};font-size:11px;font-weight:600">${p.status.toUpperCase().replace("_", " ")}</span>
+            </div>`
+          )
+          .onGlobeReady(() => {
+            if (isMounted) {
+              instance.autoRotate(0.3);
+              globeInstanceRef.current = instance;
+            }
+          })
+          .onError((err: string) => {
+            console.warn("Globe error:", err);
+          });
       };
 
       // Check for WebGL
@@ -201,7 +198,7 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
           if (isMounted) setGlobeError("WebGL not available on this device. Please use the 2D map view.");
           return;
         }
-      } catch {
+      } catch (_) {
         if (isMounted) setGlobeError("WebGL check failed. Please use the 2D map view.");
         return;
       }
@@ -217,7 +214,7 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
       if (globeInstanceRef.current) {
         try {
           (globeInstanceRef.current as { destroy: () => void }).destroy();
-        } catch { /* ignore */ }
+        } catch (_) { /* ignore */ }
         globeInstanceRef.current = null;
       }
     };
