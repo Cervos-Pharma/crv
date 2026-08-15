@@ -169,7 +169,7 @@ export async function getAllQuoteRequests(): Promise<{
   const { data, error } = await supabase
     .from("quote_requests")
     .select("*")
-    .order("created_at", { ascending: false });
+    .order("uploaded_at", { ascending: false });
 
   if (error) return { data: null, error: error.message };
   return { data, error: null };
@@ -259,7 +259,7 @@ export interface AppRelease {
   file_size_bytes: number;
   release_notes: string | null;
   is_current: boolean;
-  created_at: string;
+  uploaded_at: string;
 }
 
 /**
@@ -274,7 +274,7 @@ export async function getAllReleases(): Promise<{ data: AppRelease[] | null; err
   const { data, error } = await supabase
     .from("app_releases")
     .select("*")
-    .order("created_at", { ascending: false });
+    .order("uploaded_at", { ascending: false });
 
   if (error) return { data: null, error: error.message };
   return { data, error: null };
@@ -631,7 +631,7 @@ export async function getSupplierInvites(): Promise<{ data: InviteWithQuote[] | 
       quote_requests!left(id, company_name, contact_name, email, phone, branch_name, expected_branches, current_supplier, annual_volume),
       accounts!left(id, name)
     `)
-    .order("created_at", { ascending: false });
+    .order("uploaded_at", { ascending: false });
 
   if (error) return { data: null, error: error.message };
 
@@ -955,7 +955,7 @@ export async function getAllAccounts(): Promise<{
   const { data, error } = await supabase
     .from("accounts")
     .select("id, name, type, billing_status, download_enabled, subscription_status, verified, created_at")
-    .order("created_at", { ascending: false });
+    .order("uploaded_at", { ascending: false });
 
   if (error) return { data: null, error: error.message };
   return {
@@ -1266,7 +1266,7 @@ export async function getAllAccountsWithProfiles(): Promise<{
     const result = await supabase
       .from("accounts")
       .select("id, name, type, billing_status, download_enabled, subscription_status, verified, created_at")
-      .order("created_at", { ascending: false });
+      .order("uploaded_at", { ascending: false });
     accounts = result.data ?? [];
     if (!accounts.length) return { data: null, error: "Failed to load accounts." };
   }
@@ -2600,7 +2600,7 @@ export async function getBillingAccounts(): Promise<{ data: BillingAccount[] | n
       .from("accounts")
       .select("id, name, type, subscription_status, billing_status, subscription_expires_at, created_at")
       .neq("type", "supplier")
-      .order("created_at", { ascending: false });
+      .order("uploaded_at", { ascending: false });
     accounts = result.data ?? [];
     if (!accounts.length) return { data: [], error: null };
   }
@@ -2786,7 +2786,7 @@ export async function getAllBillingPayments(): Promise<{
     const result = await supabase
       .from("billing_payments")
       .select("id, account_id, amount_tzs, reference, note, created_at, accounts(name), hq_admins(name)")
-      .order("created_at", { ascending: false });
+      .order("uploaded_at", { ascending: false });
     if (result.error) throw new Error(result.error.message);
     payments = result.data ?? [];
   } catch {
@@ -2848,7 +2848,7 @@ export async function getAllNewsPosts(): Promise<{ data: NewsPost[] | null; erro
   const { data, error } = await supabase
     .from("news_posts")
     .select("*")
-    .order("created_at", { ascending: false });
+    .order("uploaded_at", { ascending: false });
 
   if (error) {
     // news_posts table may not exist

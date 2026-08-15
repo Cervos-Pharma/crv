@@ -441,7 +441,7 @@ export default function HQDownloadsClient({ releases: initialReleases }: HQDownl
 
                             {/* Uploaded */}
                             <td className="px-6 py-4 font-body-sm text-body-sm text-on-surface-variant whitespace-nowrap">
-                              {new Date(r.created_at).toLocaleDateString()}
+                              {new Date(r.uploaded_at).toLocaleDateString()}
                             </td>
 
                             {/* Actions */}

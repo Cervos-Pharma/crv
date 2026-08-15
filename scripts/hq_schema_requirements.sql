@@ -98,8 +98,11 @@ CREATE TABLE IF NOT EXISTS app_releases (
   file_url TEXT NOT NULL,
   file_size_bytes BIGINT,
   is_current BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  uploaded_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE app_releases ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
 
 -- ============================================
 -- MISSING COLUMNS ON EXISTING TABLES
