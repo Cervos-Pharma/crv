@@ -13,8 +13,12 @@ export async function initDb(): Promise<void> {
 
   const savedDb = localStorage.getItem(DB_KEY)
   if (savedDb) {
-    const data = Uint8Array.from(atob(savedDb), (c) => c.charCodeAt(0))
-    db = new SQL.Database(data)
+    try {
+      const data = Uint8Array.from(atob(savedDb), (c) => c.charCodeAt(0))
+      db = new SQL.Database(data)
+    } catch {
+      db = new SQL.Database()
+    }
   } else {
     db = new SQL.Database()
   }
