@@ -1,7 +1,7 @@
 [package]
-name = "cervos-desktop"
-version = "0.1.1"
-description = "Cervos Pharmacy OS - Offline-first POS"
+name = "cervos-pos"
+version = "0.1.3"
+description = "Cervos POS - Offline-first Pharmacy POS"
 authors = ["Cervos"]
 edition = "2021"
 
