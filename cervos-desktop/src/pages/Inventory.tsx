@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { Fe, Pe, Et } from "../lib/database";
 import { PHARMACY_CATEGORIES } from "../lib/branding";
-import type { Product, Batch } from "../types";
+import { useAuthStore } from "../lib/store";
+import type { Product, Batch, SaleItem } from "../types";
 
 export default function Inventory() {
+  const { isAdmin, permissions } = useAuthStore()
   const [products, setProducts] = useState<Product[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -11,6 +13,9 @@ export default function Inventory() {
   const [isLoading, setIsLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [viewingProduct, setViewingProduct] = useState<Product | null>(null);
+  const [productBatches, setProductBatches] = useState<Batch[]>([]);
+  const [productSales, setProductSales] = useState<any[]>([]);
 
   useEffect(() => {
     loadData();
@@ -22,6 +27,20 @@ export default function Inventory() {
     setProducts(prods);
     setBatches(bats);
     setIsLoading(false);
+  }
+
+  async function loadProductDetails(product: Product) {
+    const bats = batches.filter((b) => b.product_id === product.id);
+    setProductBatches(bats);
+    const salesData = await Fe(`
+      SELECT si.*, s.created_at as sale_date, s.payment_method
+      FROM sale_items si
+      JOIN sales s ON s.id = si.sale_id
+      WHERE si.batch_id IN (${bats.map(() => '?').join(',') || 'NULL'})
+      ORDER BY s.created_at DESC
+      LIMIT 50
+    `, bats.map(b => b.id));
+    setProductSales(salesData);
   }
 
   function getStockForProduct(productId: string): number {
@@ -44,6 +63,15 @@ export default function Inventory() {
     return matchesSearch && matchesCategory;
   });
 
+  function handleProductClick(product: Product) {
+    if (!isAdmin && permissions.canViewInventoryDetail) {
+      loadProductDetails(product);
+      setViewingProduct(product);
+    } else {
+      setEditingProduct(product);
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -65,13 +93,15 @@ export default function Inventory() {
             {products.length} products · {batches.filter((b) => b.quantity > 0).length} batches in stock
           </p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary font-semibold hover:opacity-90 transition-opacity"
-        >
-          <span className="material-symbols-outlined">add</span>
-          Add Product
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary font-semibold hover:opacity-90 transition-opacity"
+          >
+            <span className="material-symbols-outlined">add</span>
+            Add Product
+          </button>
+        )}
       </div>
 
       {getLowStockProducts().length > 0 && (
@@ -129,7 +159,7 @@ export default function Inventory() {
               <th className="px-4 py-3 text-right">Stock</th>
               <th className="px-4 py-3 text-right">Cost</th>
               <th className="px-4 py-3 text-right">Price</th>
-              <th className="px-4 py-3"></th>
+              {isAdmin && <th className="px-4 py-3"></th>}
             </tr>
           </thead>
           <tbody>
@@ -147,7 +177,7 @@ export default function Inventory() {
                   key={product.id}
                   className="border-t border-outline-variant hover:bg-outline-variant/30"
                 >
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 cursor-pointer" onClick={() => handleProductClick(product)}>
                     <p className="font-medium text-sm">{product.generic_name}</p>
                     {product.brand_name && (
                       <p className="text-xs text-on-surface-variant">
@@ -182,14 +212,16 @@ export default function Inventory() {
                   <td className="px-4 py-3 text-right text-sm">
                     ${mostExpensiveBatch?.sale_price.toFixed(2) || "—"}
                   </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => setEditingProduct(product)}
-                      className="p-1 rounded hover:bg-primary/10 text-primary transition-colors"
-                    >
-                      <span className="material-symbols-outlined">edit</span>
-                    </button>
-                  </td>
+                  {isAdmin && (
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => setEditingProduct(product)}
+                        className="p-1 rounded hover:bg-primary/10 text-primary transition-colors"
+                      >
+                        <span className="material-symbols-outlined">edit</span>
+                      </button>
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -203,6 +235,19 @@ export default function Inventory() {
           </div>
         )}
       </div>
+
+      {viewingProduct && (
+        <ProductDetailModal
+          product={viewingProduct}
+          batches={productBatches}
+          sales={productSales}
+          onClose={() => {
+            setViewingProduct(null);
+            setProductBatches([]);
+            setProductSales([]);
+          }}
+        />
+      )}
 
       {(showAddModal || editingProduct) && (
         <ProductModal
@@ -382,6 +427,134 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+interface ProductDetailModalProps {
+  product: Product;
+  batches: Batch[];
+  sales: any[];
+  onClose: () => void;
+}
+
+function ProductDetailModal({ product, batches, sales, onClose }: ProductDetailModalProps) {
+  const totalStock = batches.reduce((sum, b) => sum + (b.quantity || 0), 0);
+  const totalSales = sales.reduce((sum, s) => sum + (s.quantity || 0), 0);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-surface-base rounded-2xl shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="font-headline text-xl font-bold text-on-surface">
+            Product Details
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-1 rounded hover:bg-outline-variant transition-colors"
+          >
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div className="space-y-6">
+          <div className="bg-surface p-4 rounded-xl border border-outline-variant">
+            <h3 className="font-semibold text-lg">{product.generic_name}</h3>
+            {product.brand_name && (
+              <p className="text-sm text-on-surface-variant">{product.brand_name}</p>
+            )}
+            <div className="flex gap-4 mt-3 text-sm">
+              <span className="text-on-surface-variant">Category: <span className="text-on-surface">{product.category || 'N/A'}</span></span>
+              <span className="text-on-surface-variant">Barcode: <span className="text-on-surface font-mono">{product.barcode || 'N/A'}</span></span>
+            </div>
+            {product.requires_prescription ? (
+              <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-800 text-xs rounded mt-2">
+                <span className="material-symbols-outlined text-xs">medical_information</span>
+                Requires Prescription
+              </span>
+            ) : null}
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-surface p-4 rounded-xl border border-outline-variant text-center">
+              <p className="text-xs font-semibold text-on-surface-variant uppercase">Total Stock</p>
+              <p className={`font-headline text-2xl font-black mt-1 ${totalStock <= 10 ? 'text-error' : 'text-on-surface'}`}>
+                {totalStock}
+              </p>
+            </div>
+            <div className="bg-surface p-4 rounded-xl border border-outline-variant text-center">
+              <p className="text-xs font-semibold text-on-surface-variant uppercase">Units Sold</p>
+              <p className="font-headline text-2xl font-black text-on-surface mt-1">{totalSales}</p>
+            </div>
+            <div className="bg-surface p-4 rounded-xl border border-outline-variant text-center">
+              <p className="text-xs font-semibold text-on-surface-variant uppercase">Batch Count</p>
+              <p className="font-headline text-2xl font-black text-on-surface mt-1">{batches.length}</p>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-headline font-bold text-on-surface mb-3">Batch History</h3>
+            <div className="bg-surface rounded-xl border border-outline-variant overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-outline-variant/50">
+                  <tr className="text-left text-xs font-semibold text-on-surface-variant uppercase">
+                    <th className="px-4 py-2">Batch ID</th>
+                    <th className="px-4 py-2 text-right">Expiry</th>
+                    <th className="px-4 py-2 text-right">Qty</th>
+                    <th className="px-4 py-2 text-right">Cost</th>
+                    <th className="px-4 py-2 text-right">Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batches.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-6 text-center text-on-surface-variant">No batches found</td>
+                    </tr>
+                  ) : (
+                    batches.map((batch) => (
+                      <tr key={batch.id} className="border-t border-outline-variant">
+                        <td className="px-4 py-2 font-mono text-xs">{batch.id.slice(0, 8)}...</td>
+                        <td className="px-4 py-2 text-right">{batch.expiry_date ? new Date(batch.expiry_date).toLocaleDateString() : 'N/A'}</td>
+                        <td className={`px-4 py-2 text-right font-semibold ${batch.quantity <= 10 ? 'text-error' : ''}`}>{batch.quantity}</td>
+                        <td className="px-4 py-2 text-right">${batch.cost_price.toFixed(2)}</td>
+                        <td className="px-4 py-2 text-right">${batch.sale_price.toFixed(2)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {sales.length > 0 && (
+            <div>
+              <h3 className="font-headline font-bold text-on-surface mb-3">Recent Sales</h3>
+              <div className="bg-surface rounded-xl border border-outline-variant overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-outline-variant/50">
+                    <tr className="text-left text-xs font-semibold text-on-surface-variant uppercase">
+                      <th className="px-4 py-2">Date</th>
+                      <th className="px-4 py-2 text-right">Qty</th>
+                      <th className="px-4 py-2 text-right">Unit Price</th>
+                      <th className="px-4 py-2 text-right">Payment</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sales.slice(0, 10).map((sale, idx) => (
+                      <tr key={idx} className="border-t border-outline-variant">
+                        <td className="px-4 py-2">{sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : 'N/A'}</td>
+                        <td className="px-4 py-2 text-right">{sale.quantity}</td>
+                        <td className="px-4 py-2 text-right">${sale.unit_price.toFixed(2)}</td>
+                        <td className="px-4 py-2 text-right">{sale.payment_method || 'N/A'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

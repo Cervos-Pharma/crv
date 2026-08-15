@@ -1,12 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import type { PharmacyAlert } from "@/lib/actions/pharmacy";
+import type { PharmacyAlert, PharmacyNotification } from "@/lib/actions/pharmacy";
 
 const SEVERITY_STYLES: Record<string, { bg: string; border: string; text: string; icon: string; label: string }> = {
   critical: { bg: "bg-red-50", border: "border-red-200", text: "text-red-700", icon: "error", label: "Critical" },
   warning: { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", icon: "warning", label: "Warning" },
   info: { bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-700", icon: "info", label: "Info" },
+  urgent: { bg: "bg-red-50", border: "border-red-200", text: "text-red-700", icon: "error", label: "Urgent" },
+  promo: { bg: "bg-purple-50", border: "border-purple-200", text: "text-purple-700", icon: "campaign", label: "Promo" },
+};
+
+const HQ_KIND_STYLES: Record<string, { bg: string; border: string; text: string; icon: string }> = {
+  urgent: { bg: "bg-red-50", border: "border-red-200", text: "text-red-700", icon: "error" },
+  warning: { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", icon: "warning" },
+  info: { bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-700", icon: "info" },
+  promo: { bg: "bg-purple-50", border: "border-purple-200", text: "text-purple-700", icon: "campaign" },
 };
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -19,10 +28,11 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 interface AlertsClientProps {
   alerts: PharmacyAlert[];
+  notifications: PharmacyNotification[];
   error: string | null;
 }
 
-export default function AlertsClient({ alerts, error }: AlertsClientProps) {
+export default function AlertsClient({ alerts, notifications, error }: AlertsClientProps) {
   if (error) {
     return (
       <div className="bg-error-container text-on-error-container p-6 rounded-xl">
@@ -31,7 +41,10 @@ export default function AlertsClient({ alerts, error }: AlertsClientProps) {
     );
   }
 
-  if (alerts.length === 0) {
+  const hasNotifications = notifications.length > 0;
+  const hasAlerts = alerts.length > 0;
+
+  if (!hasNotifications && !hasAlerts) {
     return (
       <div className="bg-surface border border-outline-variant rounded-xl p-16 text-center">
         <span className="material-symbols-outlined text-6xl text-secondary mb-4">verified</span>
@@ -49,6 +62,22 @@ export default function AlertsClient({ alerts, error }: AlertsClientProps) {
 
   return (
     <div className="space-y-8">
+      {hasNotifications && (
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="material-symbols-outlined text-primary">campaign</span>
+            <h2 className="font-label-lg text-label-lg text-primary uppercase tracking-wider">
+              HQ Announcements — {notifications.length}
+            </h2>
+          </div>
+          <div className="space-y-3">
+            {notifications.map((notification) => (
+              <NotificationCard key={notification.id} notification={notification} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {critical.length > 0 && (
         <section>
           <div className="flex items-center gap-2 mb-3">
@@ -124,5 +153,32 @@ function AlertCard({ alert }: { alert: PharmacyAlert }) {
       </div>
       <span className="material-symbols-outlined text-on-surface-variant">chevron_right</span>
     </Link>
+  );
+}
+
+function NotificationCard({ notification }: { notification: PharmacyNotification }) {
+  const style = HQ_KIND_STYLES[notification.kind] ?? HQ_KIND_STYLES.info;
+
+  return (
+    <div className={`flex items-start gap-4 p-5 rounded-xl border ${style.bg} ${style.border}`}>
+      <span className={`material-symbols-outlined text-2xl ${style.text}`}>
+        {style.icon}
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-3 mb-1">
+          <span className={`font-label-md text-label-md font-semibold capitalize ${style.text}`}>
+            {notification.kind}
+          </span>
+          {!notification.read && (
+            <span className="w-2 h-2 rounded-full bg-primary" />
+          )}
+        </div>
+        <h3 className="font-headline-md text-headline-md mb-1">{notification.title}</h3>
+        <p className="font-body-sm text-body-sm text-on-surface-variant whitespace-pre-wrap">{notification.body}</p>
+        <p className="font-mono text-xs text-on-surface-variant/60 mt-2">
+          {new Date(notification.created_at).toLocaleString()}
+        </p>
+      </div>
+    </div>
   );
 }

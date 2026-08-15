@@ -12,6 +12,8 @@ import Users from './pages/Users'
 import Marketplace from './pages/Marketplace'
 import Subscription from './pages/Subscription'
 import Onboarding from './pages/Onboarding'
+import Records from './pages/Records'
+import Alerts from './pages/Alerts'
 import { initDb } from './lib/database'
 import { Fe } from './lib/database'
 
@@ -50,6 +52,24 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 
   if (currentOperator?.role !== 'admin') {
     return <Navigate to="/" replace />
+  }
+
+  return <>{children}</>
+}
+
+function OperatorRoute({ children }: { children: React.ReactNode }) {
+  const { currentOperator, isAuthenticated, isLoading } = useAuth()
+
+  if (isLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-surface">
+        <div className="animate-pulse text-primary-400">Loading...</div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
   }
 
   return <>{children}</>
@@ -114,6 +134,8 @@ function AppRoutes() {
         <Route path="settings" element={<Settings />} />
         <Route path="reports" element={<AdminRoute><Reports /></AdminRoute>} />
         <Route path="users" element={<AdminRoute><Users /></AdminRoute>} />
+        <Route path="records" element={<AdminRoute><Records /></AdminRoute>} />
+        <Route path="alerts" element={<Alerts />} />
         <Route path="marketplace" element={<Marketplace />} />
         <Route path="subscription" element={<Subscription />} />
       </Route>

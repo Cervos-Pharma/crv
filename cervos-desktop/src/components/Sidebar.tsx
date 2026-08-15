@@ -7,18 +7,19 @@ const baseNavItems = [
   { path: '/pos', icon: 'point_of_sale', label: 'POS' },
   { path: '/inventory', icon: 'inventory_2', label: 'Inventory' },
   { path: '/settings', icon: 'settings', label: 'Settings' },
+  { path: '/alerts', icon: 'notifications', label: 'Alerts' },
 ]
 
 const adminNavItems = [
   { path: '/reports', icon: 'analytics', label: 'Reports' },
   { path: '/users', icon: 'group', label: 'Users' },
+  { path: '/records', icon: 'receipt_long', label: 'Records' },
   { path: '/marketplace', icon: 'store', label: 'Marketplace' },
   { path: '/subscription', icon: 'credit_card', label: 'Subscription' },
 ]
 
 export default function Sidebar() {
-  const { currentOperator } = useAuthStore()
-  const isAdmin = currentOperator?.role === 'admin'
+  const { currentOperator, isAdmin } = useAuthStore()
 
   return (
     <aside className="w-56 bg-surface-base border-r border-outline-variant flex flex-col shrink-0">

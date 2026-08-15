@@ -3202,7 +3202,7 @@ export async function getAllNewsPosts(): Promise<{ data: NewsPost[] | null; erro
   const { data, error } = await supabase
     .from("news_posts")
     .select("*")
-    .order("uploaded_at", { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (error) {
     // news_posts table may not exist

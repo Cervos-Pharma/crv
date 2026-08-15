@@ -371,3 +371,50 @@ export async function getPharmacyAlerts(): Promise<{ data: PharmacyAlert[]; erro
 
   return { data: alerts, error: null };
 }
+
+export interface PharmacyNotification {
+  id: string;
+  kind: "info" | "warning" | "urgent" | "promo";
+  title: string;
+  body: string;
+  created_at: string;
+  read: boolean;
+}
+
+export async function getPharmacyNotifications(): Promise<{ data: PharmacyNotification[]; error: string | null }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { data: [], error: "Not authenticated." };
+
+  const { data: account } = await supabase
+    .from("accounts")
+    .select("id")
+    .eq("auth_user_id", user.id)
+    .single();
+
+  if (!account) return { data: [], error: "Account not found." };
+
+  try {
+    const { data: notifications, error } = await supabase
+      .from("notifications")
+      .select("id, kind, title, body, created_at, read")
+      .eq("account_id", account.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) return { data: [], error: error.message };
+
+    const result: PharmacyNotification[] = (notifications ?? []).map((n) => ({
+      id: n.id,
+      kind: n.kind ?? "info",
+      title: n.title ?? "",
+      body: n.body ?? "",
+      created_at: n.created_at,
+      read: Boolean(n.read),
+    }));
+
+    return { data: result, error: null };
+  } catch (e) {
+    return { data: [], error: e instanceof Error ? e.message : "Failed to load notifications." };
+  }
+}

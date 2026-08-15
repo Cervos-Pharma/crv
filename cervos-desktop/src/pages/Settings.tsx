@@ -1,28 +1,79 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Fe, Pe } from '../lib/database'
+import { Fe, Pe, Et } from '../lib/database'
 import { np, tp } from '../lib/sync'
 import { useAuthStore } from '../lib/store'
+import { fetchOperators, createOperator, updateOperator, deleteOperator } from '../lib/queries'
+import type { Operator } from '../types'
 
 export default function Settings() {
   const navigate = useNavigate()
-  const { logout } = useAuthStore()
+  const { logout, currentOperator, isAdmin } = useAuthStore()
   const [pharmacyName, setPharmacyName] = useState('')
   const [stats, setStats] = useState({ linked: false, pendingCount: 0, lastSyncedAt: null as string | null })
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState('')
+  const [operators, setOperators] = useState<Operator[]>([])
+  const [showAddOperator, setShowAddOperator] = useState(false)
+  const [newOpName, setNewOpName] = useState('')
+  const [newOpPin, setNewOpPin] = useState('')
+  const [newOpRole, setNewOpRole] = useState<'admin' | 'operator'>('operator')
+  const [branchId, setBranchId] = useState<string | null>(null)
 
   useEffect(() => {
     loadSettings()
   }, [])
+
+  useEffect(() => {
+    if (isAdmin) {
+      loadOperators()
+    }
+  }, [isAdmin])
 
   async function loadSettings() {
     const nameResult = await Fe("SELECT value FROM app_settings WHERE key = 'pharmacy_name'")
     if (nameResult.length > 0) {
       setPharmacyName(JSON.parse(nameResult[0].value))
     }
+    const branchResult = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
+    if (branchResult.length > 0) {
+      setBranchId(JSON.parse(branchResult[0].value))
+    }
     const s = await np()
     setStats(s)
+  }
+
+  async function loadOperators() {
+    if (!branchId) return
+    const ops = await fetchOperators(branchId)
+    setOperators(ops)
+  }
+
+  async function handleAddOperator(e: React.FormEvent) {
+    e.preventDefault()
+    if (!branchId || !newOpName.trim() || newOpPin.length < 4) return
+    try {
+      await createOperator({
+        branch_id: branchId,
+        name: newOpName.trim(),
+        pin: newOpPin,
+        role: newOpRole,
+      })
+      setNewOpName('')
+      setNewOpPin('')
+      setNewOpRole('operator')
+      setShowAddOperator(false)
+      loadOperators()
+    } catch (err: any) {
+      console.error('Failed to create operator:', err)
+    }
+  }
+
+  async function handleDeleteOperator(id: string) {
+    if (id === currentOperator?.id) return
+    if (!confirm('Delete this operator?')) return
+    await deleteOperator(id)
+    loadOperators()
   }
 
   async function handleSaveName() {
@@ -119,6 +170,98 @@ export default function Settings() {
             </div>
           </div>
         </div>
+
+        {isAdmin && (
+          <div className="bg-surface-base border border-outline-variant rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-headline text-lg font-bold text-on-surface">
+                Team Management
+              </h2>
+              <button
+                onClick={() => setShowAddOperator(true)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-primary text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+              >
+                <span className="material-symbols-outlined text-sm">add</span>
+                Add Operator
+              </button>
+            </div>
+
+            {showAddOperator && (
+              <form onSubmit={handleAddOperator} className="mb-4 p-4 bg-surface border border-outline rounded-lg space-y-3">
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-on-surface-variant mb-1">Name</label>
+                    <input
+                      type="text"
+                      value={newOpName}
+                      onChange={(e) => setNewOpName(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 rounded-md border border-outline-variant bg-surface-base text-sm"
+                      placeholder="Operator name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-on-surface-variant mb-1">PIN (4+ digits)</label>
+                    <input
+                      type="password"
+                      value={newOpPin}
+                      onChange={(e) => setNewOpPin(e.target.value)}
+                      required
+                      minLength={4}
+                      className="w-full px-3 py-2 rounded-md border border-outline-variant bg-surface-base text-sm"
+                      placeholder="----"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-on-surface-variant mb-1">Role</label>
+                    <select
+                      value={newOpRole}
+                      onChange={(e) => setNewOpRole(e.target.value as 'admin' | 'operator')}
+                      className="w-full px-3 py-2 rounded-md border border-outline-variant bg-surface-base text-sm"
+                    >
+                      <option value="operator">Operator</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-md bg-primary text-white text-sm font-semibold hover:opacity-90"
+                  >
+                    Create
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddOperator(false)}
+                    className="px-4 py-2 rounded-md border border-outline-variant text-sm hover:bg-outline-variant/30"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div className="space-y-2">
+              {operators.map((op) => (
+                <div key={op.id} className="flex items-center justify-between p-3 bg-surface rounded-lg border border-outline-variant">
+                  <div>
+                    <p className="font-medium text-sm">{op.name}</p>
+                    <p className="text-xs text-on-surface-variant capitalize">{op.role}</p>
+                  </div>
+                  {op.id !== currentOperator?.id && (
+                    <button
+                      onClick={() => handleDeleteOperator(op.id)}
+                      className="p-1.5 rounded hover:bg-error/10 text-error transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-sm">delete</span>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="bg-surface-base border border-outline-variant rounded-xl p-5">
           <h2 className="font-headline text-lg font-bold text-on-surface mb-4">

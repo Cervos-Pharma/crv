@@ -12,8 +12,10 @@
  */
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { HQ_COOKIE_NAME } from "@/lib/hq-auth";
 
 interface HQSidebarProps {
   openSupportCount?: number;
@@ -38,6 +40,13 @@ const NAV = [
 
 export default function HQSidebar({ openSupportCount = 0 }: HQSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    const cookieStore = await cookies();
+    cookieStore.delete(HQ_COOKIE_NAME);
+    router.refresh();
+  }
 
   return (
     <aside className="hidden md:flex flex-col h-full py-6 bg-surface-container-low border-r border-outline-variant w-64 flex-shrink-0 z-40">
@@ -82,6 +91,16 @@ export default function HQSidebar({ openSupportCount = 0 }: HQSidebarProps) {
             </Link>
           );
         })}
+      </div>
+
+      <div className="px-2 mt-auto pt-4 border-t border-outline-variant">
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-3 px-3 py-3 w-full text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all duration-75 rounded-md"
+        >
+          <span className="material-symbols-outlined text-[18px]">logout</span>
+          <span className="font-label-md text-label-md">Sign Out</span>
+        </button>
       </div>
     </aside>
   );

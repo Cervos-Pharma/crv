@@ -4,10 +4,13 @@ import { fetchOperator } from './queries'
 import type { Operator } from '../types'
 
 export function useAuth() {
-  const { currentOperator, isAuthenticated, isLoading, setOperator, setLoading, logout } = useAuthStore()
+  const { currentOperator, isAuthenticated, isLoading, isAdmin, permissions, setOperator, setLoading, logout } = useAuthStore()
 
   useEffect(() => {
     const checkSession = async () => {
+      if (!useAuthStore.getState()._hasHydrated) {
+        return
+      }
       try {
         const stored = useAuthStore.getState()
         if (stored.currentOperator?.id) {
@@ -31,7 +34,7 @@ export function useAuth() {
     checkSession()
   }, [setOperator, setLoading])
 
-  return { currentOperator, isAuthenticated, isLoading, logout, setOperator }
+  return { currentOperator, isAuthenticated, isLoading, isAdmin, permissions, logout, setOperator }
 }
 
 export function useRequireAuth() {
@@ -42,4 +45,9 @@ export function useRequireAuth() {
       window.location.href = '/login'
     }
   }, [isAuthenticated, isLoading])
+}
+
+export function usePermissions() {
+  const { isAdmin, permissions, currentOperator } = useAuthStore()
+  return { isAdmin, permissions, role: currentOperator?.role }
 }

@@ -65,7 +65,11 @@ export default function Login() {
         }
       }
       setOperator(op)
-      navigate('/')
+      if (op.role === 'admin') {
+        navigate('/')
+      } else {
+        navigate('/pos')
+      }
     } catch (err: any) {
       setError(err.message || 'Login failed')
     } finally {

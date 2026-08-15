@@ -2,13 +2,44 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Operator } from '../types'
 
+export interface Permissions {
+  canEditInventory: boolean
+  canViewReports: boolean
+  canViewTelemetry: boolean
+  canViewManage: boolean
+  canViewReceipts: boolean
+  canEditSettings: boolean
+  canViewMarket: boolean
+  canViewAlerts: boolean
+  canViewInventoryDetail: boolean
+}
+
 interface AuthState {
   currentOperator: Operator | null
   isAuthenticated: boolean
   isLoading: boolean
+  isAdmin: boolean
+  permissions: Permissions
   setOperator: (operator: Operator | null) => void
   setLoading: (loading: boolean) => void
   logout: () => void
+  _hasHydrated: boolean
+  setHasHydrated: (state: boolean) => void
+}
+
+function computePermissions(operator: Operator | null): Permissions {
+  const isAdmin = operator?.role === 'admin'
+  return {
+    canEditInventory: isAdmin,
+    canViewReports: isAdmin,
+    canViewTelemetry: isAdmin,
+    canViewManage: isAdmin,
+    canViewReceipts: isAdmin,
+    canEditSettings: true,
+    canViewMarket: true,
+    canViewAlerts: true,
+    canViewInventoryDetail: true,
+  }
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -17,14 +48,48 @@ export const useAuthStore = create<AuthState>()(
       currentOperator: null,
       isAuthenticated: false,
       isLoading: true,
+      isAdmin: false,
+      permissions: {
+        canEditInventory: false,
+        canViewReports: false,
+        canViewTelemetry: false,
+        canViewManage: false,
+        canViewReceipts: false,
+        canEditSettings: true,
+        canViewMarket: true,
+        canViewAlerts: true,
+        canViewInventoryDetail: true,
+      },
+      _hasHydrated: false,
+      setHasHydrated: (state) => set({ _hasHydrated: state }),
       setOperator: (operator) =>
-        set({ currentOperator: operator, isAuthenticated: !!operator, isLoading: false }),
+        set({
+          currentOperator: operator,
+          isAuthenticated: !!operator,
+          isLoading: false,
+          isAdmin: operator?.role === 'admin',
+          permissions: computePermissions(operator),
+        }),
       setLoading: (isLoading) => set({ isLoading }),
-      logout: () => set({ currentOperator: null, isAuthenticated: false, isLoading: false }),
+      logout: () =>
+        set({
+          currentOperator: null,
+          isAuthenticated: false,
+          isLoading: false,
+          isAdmin: false,
+          permissions: computePermissions(null),
+        }),
     }),
     {
       name: 'cervos-pharmacy-storage',
-      partialize: (state) => ({ currentOperator: state.currentOperator, isAuthenticated: state.isAuthenticated }),
+      partialize: (state) => ({
+        currentOperator: state.currentOperator,
+        isAuthenticated: state.isAuthenticated,
+        isAdmin: state.isAdmin,
+      }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true)
+      },
     }
   )
 )

@@ -5,7 +5,7 @@
  */
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getPharmacyAlerts } from "@/lib/actions/pharmacy";
+import { getPharmacyAlerts, getPharmacyNotifications } from "@/lib/actions/pharmacy";
 import PharmacySidebar from "@/components/PharmacySidebar";
 import AlertsClient from "./AlertsClient";
 import { getT } from "@/lib/i18n/server";
@@ -25,7 +25,10 @@ export default async function AlertsPage() {
 
   if (!account) redirect("/auth?next=/dashboard/alerts");
 
-  const { data: alerts, error } = await getPharmacyAlerts();
+  const [{ data: alerts, error }, { data: notifications }] = await Promise.all([
+    getPharmacyAlerts(),
+    getPharmacyNotifications(),
+  ]);
 
   return (
     <div className="flex min-h-screen bg-surface">
@@ -48,7 +51,7 @@ export default async function AlertsPage() {
             </p>
           </div>
 
-          <AlertsClient alerts={alerts} error={error} />
+          <AlertsClient alerts={alerts ?? []} error={error} notifications={notifications ?? []} />
         </main>
       </div>
     </div>

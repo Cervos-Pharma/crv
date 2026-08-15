@@ -3,6 +3,27 @@ import { Fe, Pe, Et, Mt } from './database'
 import type { DashboardStats } from '../types'
 
 let Ie: any = null
+const SESSION_KEY = 'cervos_supabase_session'
+
+async function saveSession(session: any): Promise<void> {
+  if (session) {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+  } else {
+    localStorage.removeItem(SESSION_KEY)
+  }
+}
+
+async function loadSession(): Promise<any> {
+  try {
+    const stored = localStorage.getItem(SESSION_KEY)
+    if (stored) {
+      return JSON.parse(stored)
+    }
+  } catch (e) {
+    console.error('Failed to load session:', e)
+  }
+  return null
+}
 
 export async function Xd(n: string, t: string): Promise<void> {
   await Pe(
@@ -28,9 +49,21 @@ export async function K0(n: string, t: string): Promise<void> {
 
 export async function Z8(): Promise<boolean> {
   if (!isConfigured) return false
+  const storedSession = await loadSession()
+  if (storedSession) {
+    Ie = supabase
+    const { data } = await Ie.auth.getSession()
+    if (!data.session) {
+      Ie = null
+      await saveSession(null)
+      return false
+    }
+    return true
+  }
   const { data } = await supabase.auth.getSession()
   if (data.session) {
     Ie = supabase
+    await saveSession(data.session)
     return true
   }
   return false
@@ -82,8 +115,13 @@ export async function Pd(): Promise<void> {
 }
 
 export async function tp(): Promise<void> {
-  await Ie?.auth.signOut()
+  try {
+    await Ie?.auth.signOut()
+  } catch (e) {
+    console.error('Sign out error:', e)
+  }
   Ie = null
+  await saveSession(null)
 }
 
 export async function np(): Promise<DashboardStats> {
