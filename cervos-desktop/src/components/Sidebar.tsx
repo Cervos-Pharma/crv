@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { useAuthStore } from '../lib/store'
+import Logo, { LogoMark } from './Logo'
 
 const baseNavItems = [
   { path: '/', icon: 'dashboard', label: 'Dashboard' },
@@ -21,10 +22,8 @@ export default function Sidebar() {
 
   return (
     <aside className="w-56 bg-surface-base border-r border-outline-variant flex flex-col shrink-0">
-      <div className="h-14 flex items-center px-4 border-b border-outline-variant">
-        <span className="material-symbols-outlined text-primary text-2xl mr-2">
-          pharmacy
-        </span>
+      <div className="h-14 flex items-center px-4 border-b border-outline-variant gap-2">
+        <LogoMark className="shrink-0" />
         <span className="font-headline font-black text-lg text-on-surface">
           Cervos
         </span>

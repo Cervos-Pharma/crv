@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../lib/store'
 import { Fe } from '../lib/database'
+import Logo from './Logo'
 
 export default function TopBar() {
   const navigate = useNavigate()
@@ -51,8 +52,9 @@ export default function TopBar() {
 
   return (
     <header className="h-14 bg-surface-base border-b border-outline-variant/60 flex items-center justify-between px-6 shrink-0">
-      <div className="text-sm text-on-surface-variant">
-        <span className="font-semibold text-on-surface">Cervos POS</span>
+      <div className="flex items-center gap-2">
+        <Logo size="sm" />
+        <span className="font-headline font-semibold text-on-surface">Cervos POS</span>
       </div>
 
       <div className="flex items-center gap-4">

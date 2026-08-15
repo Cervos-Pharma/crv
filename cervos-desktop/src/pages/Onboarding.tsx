@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Pe } from '../lib/database'
 import { Nd, Z8 } from '../lib/sync'
+import Logo from '../components/Logo'
 
 type OnboardingStep = 'welcome' | 'details' | 'logo' | 'link' | 'done'
 
@@ -91,10 +92,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         <div className="bg-surface-100 rounded-2xl border border-surface-300 p-8">
           {step === 'welcome' && (
             <div className="text-center">
-              <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/20 flex items-center justify-center mb-4">
-                <span className="material-symbols-outlined text-[32px] text-primary">
-                  pharmacy
-                </span>
+              <div className="w-16 h-16 mx-auto mb-4">
+                <Logo size="lg" className="mx-auto" />
               </div>
               <h1 className="text-3xl font-display font-bold text-white mb-2">Cervos Pharmacy</h1>
               <p className="text-gray-400 mb-6">
@@ -204,10 +203,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
           {step === 'done' && (
             <div className="text-center">
-              <div className="w-16 h-16 mx-auto rounded-2xl bg-secondary/20 flex items-center justify-center mb-4">
-                <span className="material-symbols-outlined text-[32px] text-secondary">
-                  check_circle
-                </span>
+              <div className="w-16 h-16 mx-auto mb-4">
+                <Logo size="lg" className="mx-auto" />
               </div>
               <h2 className="text-2xl font-display font-bold text-white mb-2">You are all set!</h2>
               <p className="text-gray-400 mb-6">

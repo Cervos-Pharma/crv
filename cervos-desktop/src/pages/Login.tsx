@@ -4,6 +4,7 @@ import { useAuth } from '../lib/hooks'
 import { Fe, Et } from '../lib/database'
 import { fetchOperators, validateOperatorPin, createOperator, fetchBranchSubscription } from '../lib/queries'
 import type { Operator } from '../types'
+import Logo from '../components/Logo'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -108,10 +109,10 @@ export default function Login() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface p-4">
         <div className="w-full max-w-md text-center">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-error/20 flex items-center justify-center mb-6">
-            <span className="material-symbols-outlined text-[32px] text-error">block</span>
+          <div className="w-16 h-16 mx-auto mb-6">
+            <Logo size="lg" className="mx-auto" />
           </div>
-          <h1 className="text-2xl font-display font-bold text-white mb-2">Subscription Inactive</h1>
+          <h1 className="text-2xl font-display font-bold text-on-surface mb-2">Subscription Inactive</h1>
           <p className="text-gray-400 mb-6">
             Your subscription is inactive or past due. Please update your payment method to continue.
           </p>
@@ -132,11 +133,11 @@ export default function Login() {
       <div className="min-h-screen flex items-center justify-center bg-surface p-4">
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
-            <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/20 flex items-center justify-center mb-4">
-              <span className="material-symbols-outlined text-[32px] text-primary">pharmacy</span>
+            <div className="w-16 h-16 mx-auto mb-4">
+              <Logo size="lg" className="mx-auto" />
             </div>
-            <h1 className="text-3xl font-display font-bold text-white mb-2">Cervos Pharmacy</h1>
-            <p className="text-gray-400">Create your admin account to get started</p>
+            <h1 className="text-3xl font-display font-bold text-on-surface mb-2">Cervos Pharmacy</h1>
+            <p className="text-on-surface-variant">Create your admin account to get started</p>
           </div>
           <div className="bg-surface-100 rounded-2xl border border-surface-300 p-8">
             <h2 className="text-xl font-semibold text-white mb-6">Create Admin</h2>
@@ -187,11 +188,11 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-surface p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/20 flex items-center justify-center mb-4">
-            <span className="material-symbols-outlined text-[32px] text-primary">pharmacy</span>
+          <div className="w-16 h-16 mx-auto mb-4">
+            <Logo size="lg" className="mx-auto" />
           </div>
-          <h1 className="text-3xl font-display font-bold text-white mb-2">Cervos Pharmacy</h1>
-          <p className="text-gray-400">Select your profile and enter PIN</p>
+          <h1 className="text-3xl font-display font-bold text-on-surface mb-2">Cervos Pharmacy</h1>
+          <p className="text-on-surface-variant">Select your profile and enter PIN</p>
         </div>
         <div className="bg-surface-100 rounded-2xl border border-surface-300 p-8">
           {operators.length > 0 ? (
