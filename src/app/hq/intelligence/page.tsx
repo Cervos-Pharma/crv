@@ -32,11 +32,39 @@ export default async function HQIntelligencePage() {
       <HQSidebarServer />
       <main className="flex-1 ml-64 p-8 pt-12">
         <div className="max-w-6xl mx-auto">
-          <div className="mb-8">
-            <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest mb-1">
-              HQ Console
-            </p>
-            <h1 className="font-headline-lg text-headline-lg text-ink-deep">Intelligence</h1>
+          <div className="flex items-start justify-between mb-8">
+            <div>
+              <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest mb-1">
+                HQ Console
+              </p>
+              <h1 className="font-headline-lg text-headline-lg text-ink-deep">Intelligence</h1>
+            </div>
+            <div className="flex gap-2">
+              <a href="/api/hq/export/accounts" className="flex items-center gap-2 px-4 py-2 border border-outline-variant bg-surface-base rounded font-label-md text-label-md text-on-surface-variant hover:border-primary hover:text-primary transition-all">
+                <span className="material-symbols-outlined text-[16px]">download</span>
+                Accounts CSV
+              </a>
+              <a href="/api/hq/export/branches" className="flex items-center gap-2 px-4 py-2 border border-outline-variant bg-surface-base rounded font-label-md text-label-md text-on-surface-variant hover:border-primary hover:text-primary transition-all">
+                <span className="material-symbols-outlined text-[16px]">download</span>
+                Branches CSV
+              </a>
+              <a href="/api/hq/export/payments" className="flex items-center gap-2 px-4 py-2 border border-outline-variant bg-surface-base rounded font-label-md text-label-md text-on-surface-variant hover:border-primary hover:text-primary transition-all">
+                <span className="material-symbols-outlined text-[16px]">download</span>
+                Payments CSV
+              </a>
+              <a href="/api/hq/export/tickets" className="flex items-center gap-2 px-4 py-2 border border-outline-variant bg-surface-base rounded font-label-md text-label-md text-on-surface-variant hover:border-primary hover:text-primary transition-all">
+                <span className="material-symbols-outlined text-[16px]">download</span>
+                Tickets CSV
+              </a>
+              <a href="/api/hq/export/quotes" className="flex items-center gap-2 px-4 py-2 border border-outline-variant bg-surface-base rounded font-label-md text-label-md text-on-surface-variant hover:border-primary hover:text-primary transition-all">
+                <span className="material-symbols-outlined text-[16px]">download</span>
+                Quotes CSV
+              </a>
+              <a href="/api/hq/export/news" className="flex items-center gap-2 px-4 py-2 border border-outline-variant bg-surface-base rounded font-label-md text-label-md text-on-surface-variant hover:border-primary hover:text-primary transition-all">
+                <span className="material-symbols-outlined text-[16px]">download</span>
+                News CSV
+              </a>
+            </div>
           </div>
 
           <HQIntelligenceClient

@@ -104,6 +104,27 @@ export default function HQAccountsClient({ accounts, branches }: HQAccountsClien
         <span className="ml-auto font-label-md text-label-md text-on-surface-variant self-center">
           {filtered.length} account{filtered.length !== 1 ? "s" : ""}
         </span>
+        <button
+          onClick={async () => {
+            try {
+              const res = await fetch("/api/hq/export/accounts");
+              if (!res.ok) throw new Error("Export failed");
+              const blob = await res.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `accounts-${new Date().toISOString().slice(0,10)}.csv`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            } catch { /* silent */ }
+          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-outline-variant text-on-surface-variant text-sm rounded hover:border-primary hover:text-primary transition-all"
+        >
+          <span className="material-symbols-outlined text-[16px]">download</span>
+          Export
+        </button>
       </div>
 
       <div className="bg-surface-base border border-outline-variant rounded overflow-hidden">

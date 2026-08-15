@@ -781,11 +781,10 @@ export default function DownloadClient({ releases }: DownloadClientProps) {
           {hasCurrentRelease ? (
             <button
               onClick={() => handleDownload(currentRelease.id)}
-              disabled={downloadingId === currentRelease.id}
-              className="inline-flex items-center gap-3 bg-on-primary text-primary font-label-md text-label-md py-4 px-8 rounded-xl shadow-lg text-base hover:scale-[1.03] hover:shadow-[0_12px_48px_rgba(0,0,0,0.25)] active:scale-[0.98] transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-3 bg-on-primary text-primary font-label-md text-label-md py-4 px-8 rounded-xl shadow-lg text-base hover:scale-[1.03] hover:shadow-[0_12px_48px_rgba(0,0,0,0.25)] active:scale-[0.98] transition-all duration-200"
             >
-              <span className="material-symbols-outlined">{downloadingId === currentRelease.id ? "progress_activity" : OS_CONFIG[os].icon}</span>
-              {downloadingId === currentRelease.id ? t("download.downloading") : t(OS_CONFIG[os].labelKey)}
+              <span className="material-symbols-outlined">{OS_CONFIG[os].icon}</span>
+              {t(OS_CONFIG[os].labelKey)}
             </button>
           ) : (
             <button onClick={() => setToast(true)} className="inline-flex items-center gap-3 bg-on-primary text-primary font-label-md text-label-md py-4 px-8 rounded-xl shadow-lg text-base hover:scale-[1.03] hover:shadow-[0_12px_48px_rgba(0,0,0,0.25)] active:scale-[0.98] transition-all duration-200">

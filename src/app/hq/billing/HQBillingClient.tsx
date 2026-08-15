@@ -487,6 +487,30 @@ export default function HQBillingClient({
                   <option value="mpesa">M-Pesa</option>
                   <option value="bank">Bank</option>
                 </select>
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch("/api/hq/export/payments");
+                      if (!res.ok) throw new Error("Export failed");
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `payments-${new Date().toISOString().slice(0,10)}.csv`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                      showToast("Payments exported.", "success");
+                    } catch {
+                      showToast("Export failed.", "error");
+                    }
+                  }}
+                  className="ml-auto flex items-center gap-2 px-4 py-2 border border-outline-variant bg-surface-container-low rounded text-sm hover:border-primary hover:text-primary transition-all"
+                >
+                  <span className="material-symbols-outlined text-[16px]">download</span>
+                  Export CSV
+                </button>
               </div>
               <div className="bg-surface-base border border-outline-variant rounded overflow-hidden">
                 <div className="overflow-x-auto">
