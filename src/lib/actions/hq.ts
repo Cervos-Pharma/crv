@@ -3339,7 +3339,7 @@ export async function sendHQMessage(
 
   const supabase = await createServiceClient();
 
-  const { data: msgData, error: msgError } = await supabase
+    const { data: msgData, error: msgError } = await supabase
     .from("hq_messages")
     .insert({
       title: input.title.trim(),
@@ -3348,7 +3348,7 @@ export async function sendHQMessage(
       target_scope: input.target_scope,
       target_account_id: input.target_account_id ?? null,
       target_branch_id: input.target_branch_id ?? null,
-      created_by: auth.adminId,
+      created_by: "HQ Admin",
     })
     .select("id")
     .single();
@@ -3518,7 +3518,8 @@ export async function logHQAction(params: {
     entity_type: params.entity_type ?? null,
     entity_id: params.entity_id ?? null,
     detail: params.detail ?? null,
-    admin_id: auth.adminId,
+    admin_id: null,
+    admin_email: "HQ Admin",
     account_id: params.account_id ?? null,
     branch_id: params.branch_id ?? null,
     ip_address: params.ip_address ?? null,
@@ -4104,7 +4105,7 @@ export interface UserActivityMetrics {
   };
   userActivityTrail: {
     userId: string;
-    userEmail: string | null;
+    name: string;
     accountName: string;
     branchName: string;
     role: string;
@@ -4247,7 +4248,7 @@ export async function getUserActivityMetrics(periodDays: number): Promise<{ data
       const acc = accId ? accountMap.get(accId) : null;
       return {
         userId: op.id,
-        userEmail: null,
+        name: op.name,
         accountName: acc?.name ?? "Unknown",
         branchName: b?.name ?? "Unknown",
         role: op.role,

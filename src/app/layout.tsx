@@ -24,8 +24,21 @@ export const metadata: Metadata = {
   description:
     "Precision logistics for the modern pharmacy. Secure, offline-first, FEFO-optimised.",
   icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
+  openGraph: {
+    title: "Cervos — Pharmacy OS",
+    description: "Precision logistics for the modern pharmacy. Secure, offline-first, FEFO-optimised.",
+    siteName: "Cervos",
+    images: [{ url: "/logo.png", width: 512, height: 512 }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Cervos — Pharmacy OS",
+    description: "Precision logistics for the modern pharmacy.",
+    images: ["/logo.png"],
   },
 };
 
