@@ -596,6 +596,7 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
           </div>
         </form>
       </div>
+      </>
     </div>
   );
 }
