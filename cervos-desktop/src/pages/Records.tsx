@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { Fe } from '../lib/database'
-import { useAuthStore } from '../lib/store'
 
 interface ReceiptData {
   id: string
@@ -18,7 +17,6 @@ interface ReceiptData {
 }
 
 export default function Records() {
-  const { isAuthenticated, currentOperator } = useAuthStore()
   const [receipts, setReceipts] = useState<ReceiptData[]>([])
   const [filteredReceipts, setFilteredReceipts] = useState<ReceiptData[]>([])
   const [isLoading, setIsLoading] = useState(true)

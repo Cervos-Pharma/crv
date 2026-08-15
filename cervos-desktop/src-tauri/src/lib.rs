@@ -19,20 +19,12 @@ pub fn run() {
 
             let main_window = app.get_webview_window("main").expect("main window not found");
 
-            main_window.on_window_event(move |event| {
-                if let tauri::WindowEvent::CloseRequested { .. } = event {
-                    info!("Application close requested");
-                }
-            });
-
-            main_window.show()?;
-            info!("Main window shown");
-
             #[cfg(debug_assertions)]
             {
                 main_window.open_devtools();
             }
 
+            info!("Main window ready");
             Ok(())
         })
         .run(tauri::generate_context!());

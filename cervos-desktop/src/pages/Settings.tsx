@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Fe, Pe, Et } from '../lib/database'
+import { Fe, Pe } from '../lib/database'
 import { np, tp } from '../lib/sync'
 import { useAuthStore } from '../lib/store'
-import { fetchOperators, createOperator, updateOperator, deleteOperator } from '../lib/queries'
+import { fetchOperators, createOperator, deleteOperator } from '../lib/queries'
 import { supabaseUrl } from '../lib/supabase'
 import type { Operator } from '../types'
 

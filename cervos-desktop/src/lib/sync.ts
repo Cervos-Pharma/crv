@@ -101,12 +101,23 @@ export async function Pd(): Promise<void> {
 
   if (!account) return
 
+  const nameResult = await Fe("SELECT value FROM app_settings WHERE key = 'centre_name'")
+  const latResult = await Fe("SELECT value FROM app_settings WHERE key = 'centre_lat'")
+  const lngResult = await Fe("SELECT value FROM app_settings WHERE key = 'centre_lng'")
+
+  const centreName = nameResult.length > 0 ? JSON.parse(nameResult[0].value) : 'My Pharmacy'
+  const lat = latResult.length > 0 && latResult[0].value !== 'null' ? JSON.parse(latResult[0].value) : null
+  const lng = lngResult.length > 0 && lngResult[0].value !== 'null' ? JSON.parse(lngResult[0].value) : null
+
   const branchId = Et()
   const trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString()
+
   await Ie.from('branches').insert({
     id: branchId,
     account_id: account.id,
-    name: 'Main Branch',
+    name: centreName,
+    lat: lat,
+    lng: lng,
     subscription_status: 'trial',
     trial_ends_at: trialEndsAt,
   })

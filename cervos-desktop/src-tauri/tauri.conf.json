@@ -7,8 +7,7 @@
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist",
-    "devtools": true
+    "frontendDist": "../dist"
   },
   "app": {
     "withGlobalTauri": true,
@@ -24,18 +23,11 @@
         "resizable": true,
         "fullscreen": false,
         "decorations": true,
-        "visible": false
+        "visible": true
       }
     ],
     "security": {
       "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://cdn.jsdelivr.net https://*.supabase.co https://api.cervos.io https://*.cervos.io; img-src 'self' data: blob:; worker-src 'self' blob:"
-    },
-    "splashscreen": {
-      "imageSrc": "icons/icon.png",
-      "imageWidth": 200,
-      "imageHeight": 200,
-      "center": true,
-      "backgroundColor": "#6750A4"
     }
   },
   "bundle": {
@@ -50,18 +42,12 @@
     ],
     "resources": [],
     "windows": {
-      "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
-      "timestampUrl": "",
       "nsis": {
-        "license": null,
         "installerIcon": "icons/icon.ico",
-        "headerImage": "icons/installer-header.bmp",
-        "sidebarImage": "icons/installer-sidebar.bmp",
         "installMode": "currentUser",
-        "displayLanguageSelector": true,
-        "languages": ["English", "Swahili"],
-        "promptElevationMode": "forceElevation",
+        "displayLanguageSelector": false,
+        "languages": ["English"],
         "startMenuFolder": "Cervos Pharmacy OS"
       }
     }

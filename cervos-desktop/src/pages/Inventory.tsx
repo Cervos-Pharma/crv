@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Fe, Pe, Et } from "../lib/database";
 import { PHARMACY_CATEGORIES } from "../lib/branding";
 import { useAuthStore } from "../lib/store";
-import type { Product, Batch, SaleItem } from "../types";
+import type { Product, Batch } from "../types";
 
 export default function Inventory() {
   const { isAdmin, permissions } = useAuthStore()

@@ -9,7 +9,7 @@ interface SubscriptionInfo {
 }
 
 export default function Alerts() {
-  const { isAdmin, isAuthenticated, currentOperator } = useAuthStore()
+  const { isAdmin, isAuthenticated } = useAuthStore()
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null)
   const [showBanner, setShowBanner] = useState(false)
   const [bannerMessage, setBannerMessage] = useState('')

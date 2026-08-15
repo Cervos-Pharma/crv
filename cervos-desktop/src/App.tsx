@@ -57,24 +57,6 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-function OperatorRoute({ children }: { children: React.ReactNode }) {
-  const { currentOperator, isAuthenticated, isLoading } = useAuth()
-
-  if (isLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-surface">
-        <div className="animate-pulse text-primary-400">Loading...</div>
-      </div>
-    )
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
-  }
-
-  return <>{children}</>
-}
-
 function OnboardingRoute() {
   const [isOnboarded, setIsOnboarded] = useState<boolean | null>(null)
   const navigate = useNavigate()
