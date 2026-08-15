@@ -22,9 +22,26 @@ const STATUS_COLORS: Record<string, string> = {
   locked: "#7D5260",
 };
 
+interface GlobeInstance {
+  container(el: HTMLElement): GlobeInstance;
+  globeImageUrl(url: string): GlobeInstance;
+  bumpImageUrl(url: string): GlobeInstance;
+  backgroundImageUrl(url: string): GlobeInstance;
+  pointsData(data: BranchPoint[]): GlobeInstance;
+  pointLat(lat: string): GlobeInstance;
+  pointLng(lng: string): GlobeInstance;
+  pointColor(fn: (p: BranchPoint) => string): GlobeInstance;
+  pointAltitude(n: number): GlobeInstance;
+  pointRadius(n: number): GlobeInstance;
+  pointLabel(fn: (p: BranchPoint) => string): GlobeInstance;
+  onGlobeReady(fn: () => void): GlobeInstance;
+  autoRotate(n: number): GlobeInstance;
+  destroy(): void;
+}
+
 declare global {
   interface Window {
-    Globe: unknown;
+    Globe: (opts?: Record<string, unknown>) => GlobeInstance;
     THREE: unknown;
   }
 }
@@ -58,12 +75,6 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
       }).addTo(map);
 
       if (validPoints.length === 0) return;
-
-      const maxRevenue = Math.max(...validPoints.map((b) => {
-        const n = networkHealth as Record<string, unknown>;
-        const locs = (n.branchLocations as typeof validPoints | undefined) ?? [];
-        return 1;
-      }), 1);
 
       for (const point of validPoints) {
         if (point.lat == null || point.lng == null) continue;
@@ -128,22 +139,22 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
           script.src = "https://unpkg.com/globe.gl@2.27.2/dist/globe.gl.js";
           script.onload = () => {
             if (!isMounted) return;
-            mountGlobe(window.Globe as (...args: unknown[]) => unknown);
+            mountGlobe(window.Globe);
           };
           script.onerror = () => {
             if (isMounted) setGlobeError("Failed to load globe.gl. Please switch to 2D map.");
           };
           document.head.appendChild(script);
         } else {
-          mountGlobe(window.Globe as (...args: unknown[]) => unknown);
+          mountGlobe(window.Globe);
         }
       };
 
-      const mountGlobe = (GlobeFn: (...args: unknown[]) => unknown) => {
+      const mountGlobe = (GlobeFn: (opts?: Record<string, unknown>) => GlobeInstance) => {
         if (!isMounted || !container) return;
 
         try {
-          const instance = (GlobeFn as (el: HTMLElement) => Record<string, unknown>)(container);
+          const instance: GlobeInstance = GlobeFn({});
 
           instance
             .globeImageUrl("//unpkg.com/three-globe/example/img/earth-blue-marble.jpg")
@@ -161,13 +172,13 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
                 <span style="color:#666;font-size:12px">${p.accountName}</span><br/>
                 <span style="color:${STATUS_COLORS[p.status]};font-size:11px;font-weight:600">${p.status.toUpperCase().replace("_", " ")}</span>
               </div>`
-            );
+            )
 
           // Detect WebGL support
           try {
-            (instance as Record<string, unknown>).onGlobeReady(() => {
+            instance.onGlobeReady(() => {
               if (isMounted) {
-                (instance as { autoRotate: (n: number) => void }).autoRotate(0.3);
+                instance.autoRotate(0.3);
                 globeInstanceRef.current = instance;
               }
             });
