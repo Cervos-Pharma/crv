@@ -36,10 +36,40 @@ export default function Settings() {
     setIsSyncing(true)
     setSyncMessage('')
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-      setSyncMessage('Sync completed successfully')
-    } catch (err) {
-      setSyncMessage('Sync failed. Please try again.')
+      const { data: sessionData } = await (await import('../lib/sync')).then(m => m.getSupabase()).auth.getSession()
+      if (!sessionData.session) {
+        setSyncMessage('Not linked to server.')
+        return
+      }
+      const branchResult = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
+      if (!branchResult.length) { setSyncMessage('No branch set.'); return }
+      const branchId = JSON.parse(branchResult[0].value)
+
+      const { getSupabase } = await import('../lib/sync')
+      const supabase = getSupabase()
+      const lastPull = await (await import('../lib/sync')).then(m => m.q0(branchId))
+      const since = lastPull || '1970-01-01T00:00:00Z'
+
+      const serverUrl = (window as any).__SUPABASE_URL__
+      const anonKey = (window as any).__SUPABASE_ANON_KEY__
+      const res = await fetch(`${serverUrl}/functions/v1/sync?since=${encodeURIComponent(since)}`, {
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}` }
+      })
+      if (!res.ok) throw new Error(`Sync failed: ${res.status}`)
+      const data = await res.json()
+
+      const { syncSubscription } = await import('../lib/sync')
+      await syncSubscription(branchId)
+
+      const now = new Date().toISOString()
+      await (await import('../lib/sync')).then(m => m.K0(branchId, now))
+      await (await import('../lib/sync')).then(m => m.Xd('last_synced_at', now))
+
+      const s = await (await import('../lib/sync')).then(m => m.np())
+      setStats(s)
+      setSyncMessage(`Synced ${data.records ?? 0} records at ${new Date().toLocaleTimeString()}`)
+    } catch (err: any) {
+      setSyncMessage(`Sync failed: ${err.message}`)
     } finally {
       setIsSyncing(false)
     }

@@ -10,14 +10,14 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { HQ_COOKIE_NAME, isValidHQToken } from "@/lib/hq-auth";
 import HQSidebarServer from "@/components/HQSidebarServer";
-import { getIntelligenceOverview, getDemographicsBreakdown, getSyncHealthMetrics, getEngagementMetrics, getNetworkHealthMetrics, getRevenueMetrics, getHourlyActivityStats } from "@/lib/actions/hq";
+import { getIntelligenceOverview, getDemographicsBreakdown, getSyncHealthMetrics, getEngagementMetrics, getNetworkHealthMetrics, getRevenueMetrics, getHourlyActivityStats, getBranchIntelligenceMetrics, getMarketIntelligence, getLogisticsIntelligence, getUserActivityMetrics } from "@/lib/actions/hq";
 import HQIntelligenceClient from "./HQIntelligenceClient";
 
 export default async function HQIntelligencePage() {
   const cookieStore = await cookies();
   if (!isValidHQToken(cookieStore.get(HQ_COOKIE_NAME)?.value)) redirect("/hq");
 
-  const [overviewResult, demographicsResult, syncHealthResult, engagementResult, networkHealthResult, revenueResult, hourlyResult] = await Promise.all([
+  const [overviewResult, demographicsResult, syncHealthResult, engagementResult, networkHealthResult, revenueResult, hourlyResult, branchIntelligenceResult, marketResult, logisticsResult, userActivityResult] = await Promise.all([
     getIntelligenceOverview(30),
     getDemographicsBreakdown(),
     getSyncHealthMetrics(30),
@@ -25,6 +25,10 @@ export default async function HQIntelligencePage() {
     getNetworkHealthMetrics(),
     getRevenueMetrics(30),
     getHourlyActivityStats(24),
+    getBranchIntelligenceMetrics(30),
+    getMarketIntelligence(30),
+    getLogisticsIntelligence(30),
+    getUserActivityMetrics(30),
   ]);
 
   return (
@@ -82,6 +86,14 @@ export default async function HQIntelligencePage() {
             revenueError={revenueResult.error}
             hourlyActivity={hourlyResult.data}
             hourlyActivityError={hourlyResult.error}
+            branchIntelligence={branchIntelligenceResult.data}
+            branchIntelligenceError={branchIntelligenceResult.error}
+            marketIntelligence={marketResult.data}
+            marketIntelligenceError={marketResult.error}
+            logisticsIntelligence={logisticsResult.data}
+            logisticsIntelligenceError={logisticsResult.error}
+            userActivity={userActivityResult.data}
+            userActivityError={userActivityResult.error}
           />
         </div>
       </main>

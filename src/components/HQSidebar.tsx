@@ -25,12 +25,14 @@ const NAV = [
   { label: "Accounts",       href: "/hq/accounts",       icon: "group" },
   { label: "Billing",        href: "/hq/billing",        icon: "payments" },
   { label: "Quote Requests", href: "/hq/quotes",         icon: "request_quote" },
-  { label: "Invites",        href: "/hq/invites",         icon: "mail" },
+  { label: "Invites",        href: "/hq/invites",        icon: "mail" },
   { label: "Network Map",    href: "/hq/network",        icon: "public" },
   { label: "Downloads",      href: "/hq/downloads",      icon: "download" },
   { label: "Support",        href: "/hq/support",        icon: "support_agent" },
   { label: "HQ Team",        href: "/hq/team",           icon: "badge" },
-  { label: "News",          href: "/hq/news",           icon: "newspaper" },
+  { label: "News",           href: "/hq/news",           icon: "newspaper" },
+  { label: "Messages",        href: "/hq/messages",       icon: "campaign" },
+  { label: "Audit Log",      href: "/hq/audit",          icon: "shield" },
 ];
 
 export default function HQSidebar({ openSupportCount = 0 }: HQSidebarProps) {

@@ -15,7 +15,7 @@ export async function GET(
 
   const { data: release, error } = await supabase
     .from("app_releases")
-    .select("file_url, platform, version")
+    .select("file_path, file_url, platform, version")
     .eq("id", id)
     .single();
 
@@ -23,5 +23,9 @@ export async function GET(
     return NextResponse.json({ error: "Release not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ url: release.file_url });
+  const filePath = release.file_path || release.file_url;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publicUrl = `${supabaseUrl}/storage/v1/object/public/app-releases/${filePath}`;
+
+  return NextResponse.json({ url: publicUrl });
 }

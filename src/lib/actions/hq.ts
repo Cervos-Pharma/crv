@@ -2386,6 +2386,248 @@ export async function getHourlyActivityStats(hours: number): Promise<{ data: { h
   }
 }
 
+export interface BranchIntelligenceMetrics {
+  topBranchesByRevenue: { branchId: string; branchName: string; accountName: string; revenue: number; transactionCount: number }[];
+  bottomBranchesByRevenue: { branchId: string; branchName: string; accountName: string; revenue: number; transactionCount: number }[];
+  topBranchesByTransactions: { branchId: string; branchName: string; accountName: string; transactionCount: number; revenue: number }[];
+  expiryRisk: {
+    expiringIn30Days: number;
+    expiringIn60Days: number;
+    expiringIn90Days: number;
+    expired: number;
+    atRiskBranches: { branchId: string; branchName: string; accountName: string; expiringBatches: number; daysUntilExpiry: number }[];
+  };
+  stockAlerts: {
+    outOfStock: { branchId: string; branchName: string; accountName: string; productName: string; productId: string }[];
+    lowStock: { branchId: string; branchName: string; accountName: string; productName: string; productId: string; totalQuantity: number }[];
+    totalOutOfStock: number;
+    totalLowStock: number;
+  };
+  topProductsByRevenue: { productId: string; genericName: string; brandName: string | null; revenue: number; unitsSold: number }[];
+  topProductsByQuantity: { productId: string; genericName: string; brandName: string | null; unitsSold: number; revenue: number }[];
+}
+
+export async function getBranchIntelligenceMetrics(periodDays: number): Promise<{ data: BranchIntelligenceMetrics | null; error: string | null }> {
+  const auth = await assertHQAuth();
+  if (auth.error) return { data: null, error: auth.error };
+
+  const supabase = await createServiceClient();
+  const periodStart = periodStartIso(periodDays);
+  const now = Date.now();
+  const dayMs = 86400000;
+
+  try {
+    let branches: { id: string; name: string; account_id: string }[] = [];
+    let accounts: { id: string; name: string }[] = [];
+    let batches: { id: string; branch_id: string; product_id: string; quantity: number; expiry_date: string | null }[] = [];
+    let products: { id: string; generic_name: string; brand_name: string | null }[] = [];
+    let saleItems: { batch_id: string; quantity: number; unit_price: number; sale_id: string }[] = [];
+    let sales: { id: string; created_at: string; total: number }[] = [];
+
+    try {
+      const [branchesResult, accountsResult, batchesResult, productsResult, saleItemsResult, salesResult] = await Promise.all([
+        supabase.from("branches").select("id, name, account_id"),
+        supabase.from("accounts").select("id, name"),
+        supabase.from("batches").select("id, branch_id, product_id, quantity, expiry_date"),
+        supabase.from("products").select("id, generic_name, brand_name"),
+        supabase.from("sale_items").select("batch_id, quantity, unit_price, sale_id"),
+        supabase.from("sales").select("id, created_at, total").gte("created_at", periodStart),
+      ]);
+      branches = branchesResult.data ?? [];
+      accounts = accountsResult.data ?? [];
+      batches = batchesResult.data ?? [];
+      products = productsResult.data ?? [];
+      saleItems = saleItemsResult.data ?? [];
+      sales = salesResult.data ?? [];
+    } catch {
+      // Tables may not exist
+    }
+
+    const accountMap = new Map(accounts.map((a) => [a.id, a.name]));
+    const productMap = new Map(products.map((p) => [p.id, p]));
+    const branchMap = new Map(branches.map((b) => [b.id, b]));
+
+    const batchToBranch = new Map<string, string>();
+    for (const b of batches) {
+      if (b.branch_id) batchToBranch.set(b.id, b.branch_id);
+    }
+
+    const branchRevenue = new Map<string, number>();
+    const branchTxCount = new Map<string, number>();
+    const productRevenue = new Map<string, number>();
+    const productQty = new Map<string, number>();
+    const branchExpiring = new Map<string, number>();
+    const branchExpiring60 = new Map<string, number>();
+    const branchExpiring90 = new Map<string, number>();
+    const branchExpired = new Map<string, number>();
+    const branchOutOfStock = new Map<string, Set<string>>();
+    const branchLowStock = new Map<string, { productId: string; qty: number }[]>();
+
+    for (const si of saleItems) {
+      const branchId = batchToBranch.get(si.batch_id);
+      if (!branchId) continue;
+      branchRevenue.set(branchId, (branchRevenue.get(branchId) ?? 0) + (Number(si.unit_price) || 0) * si.quantity);
+      branchTxCount.set(branchId, (branchTxCount.get(branchId) ?? 0) + 1);
+      productRevenue.set(si.batch_id, (productRevenue.get(si.batch_id) ?? 0) + (Number(si.unit_price) || 0) * si.quantity);
+      productQty.set(si.batch_id, (productQty.get(si.batch_id) ?? 0) + si.quantity);
+    }
+
+    for (const s of sales) {
+      const saleBranchSet = new Set<string>();
+      for (const si of saleItems.filter((x) => x.sale_id === s.id)) {
+        const bId = batchToBranch.get(si.batch_id);
+        if (bId) saleBranchSet.add(bId);
+      }
+      for (const bId of saleBranchSet) {
+        branchRevenue.set(bId, (branchRevenue.get(bId) ?? 0) + Number(s.total || 0));
+      }
+    }
+
+    for (const bat of batches) {
+      const branchId = bat.branch_id;
+      if (!branchId) continue;
+      const expiry = bat.expiry_date ? new Date(bat.expiry_date).getTime() : null;
+      const productName = productMap.get(bat.product_id)?.generic_name ?? "Unknown";
+      const brandName = productMap.get(bat.product_id)?.brand_name;
+
+      if (bat.quantity <= 0) {
+        if (!branchOutOfStock.has(branchId)) branchOutOfStock.set(branchId, new Set());
+        branchOutOfStock.get(branchId)!.add(productName);
+      } else if (bat.quantity < 10) {
+        if (!branchLowStock.has(branchId)) branchLowStock.set(branchId, []);
+        branchLowStock.get(branchId)!.push({ productId: bat.product_id, qty: bat.quantity });
+      }
+
+      if (expiry !== null) {
+        const daysUntil = Math.round((expiry - now) / dayMs);
+        if (daysUntil < 0) {
+          branchExpired.set(branchId, (branchExpired.get(branchId) ?? 0) + 1);
+        } else if (daysUntil <= 30) {
+          branchExpiring.set(branchId, (branchExpiring.get(branchId) ?? 0) + 1);
+        } else if (daysUntil <= 60) {
+          branchExpiring60.set(branchId, (branchExpiring60.get(branchId) ?? 0) + 1);
+        } else if (daysUntil <= 90) {
+          branchExpiring90.set(branchId, (branchExpiring90.get(branchId) ?? 0) + 1);
+        }
+      }
+    }
+
+    const enriched = branches.map((b) => ({
+      branchId: b.id,
+      branchName: b.name,
+      accountName: accountMap.get(b.account_id) ?? "Unknown",
+      revenue: branchRevenue.get(b.id) ?? 0,
+      transactionCount: branchTxCount.get(b.id) ?? 0,
+      expiring30: branchExpiring.get(b.id) ?? 0,
+      expiring60: branchExpiring60.get(b.id) ?? 0,
+      expiring90: branchExpiring90.get(b.id) ?? 0,
+      expired: branchExpired.get(b.id) ?? 0,
+    }));
+
+    const sortedByRevenue = [...enriched].sort((a, b) => b.revenue - a.revenue);
+    const sortedByTx = [...enriched].sort((a, b) => b.transactionCount - a.transactionCount);
+
+    const topBranchesByRevenue = sortedByRevenue.slice(0, 10).map((b) => ({
+      branchId: b.branchId, branchName: b.branchName, accountName: b.accountName,
+      revenue: Math.round(b.revenue), transactionCount: b.transactionCount,
+    }));
+
+    const bottomBranchesByRevenue = sortedByRevenue.slice(-5).reverse().map((b) => ({
+      branchId: b.branchId, branchName: b.branchName, accountName: b.accountName,
+      revenue: Math.round(b.revenue), transactionCount: b.transactionCount,
+    }));
+
+    const topBranchesByTransactions = sortedByTx.slice(0, 10).map((b) => ({
+      branchId: b.branchId, branchName: b.branchName, accountName: b.accountName,
+      transactionCount: b.transactionCount, revenue: Math.round(b.revenue),
+    }));
+
+    const atRiskBranches = enriched
+      .filter((b) => b.expiring30 > 0 || b.expired > 0)
+      .sort((a, b) => b.expiring30 - a.expiring30)
+      .slice(0, 10)
+      .map((b) => ({
+        branchId: b.branchId, branchName: b.branchName, accountName: b.accountName,
+        expiringBatches: b.expiring30 + b.expired, daysUntilExpiry: 30,
+      }));
+
+    const allOutOfStock: BranchIntelligenceMetrics["stockAlerts"]["outOfStock"] = [];
+    for (const [branchId, productNames] of branchOutOfStock.entries()) {
+      const branch = branchMap.get(branchId);
+      if (!branch) continue;
+      for (const productName of productNames) {
+        const productId = [...productMap.entries()].find(([, p]) => p.generic_name === productName)?.[0] ?? "";
+        allOutOfStock.push({
+          branchId, branchName: branch.name,
+          accountName: accountMap.get(branch.account_id) ?? "Unknown",
+          productName, productId,
+        });
+      }
+    }
+
+    const allLowStock: BranchIntelligenceMetrics["stockAlerts"]["lowStock"] = [];
+    for (const [branchId, items] of branchLowStock.entries()) {
+      const branch = branchMap.get(branchId);
+      if (!branch) continue;
+      for (const item of items) {
+        const p = productMap.get(item.productId);
+        allLowStock.push({
+          branchId, branchName: branch.name,
+          accountName: accountMap.get(branch.account_id) ?? "Unknown",
+          productName: p?.generic_name ?? "Unknown", productId: item.productId,
+          totalQuantity: item.qty,
+        });
+      }
+    }
+
+    const allProductRevenue = [...productRevenue.entries()]
+      .map(([productId, revenue]) => {
+        const p = productMap.get(productId);
+        return { productId, genericName: p?.generic_name ?? "Unknown", brandName: p?.brand_name ?? null, revenue, unitsSold: productQty.get(productId) ?? 0 };
+      })
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 20);
+
+    const allProductQty = [...productQty.entries()]
+      .map(([productId, unitsSold]) => {
+        const p = productMap.get(productId);
+        return { productId, genericName: p?.generic_name ?? "Unknown", brandName: p?.brand_name ?? null, unitsSold, revenue: productRevenue.get(productId) ?? 0 };
+      })
+      .sort((a, b) => b.unitsSold - a.unitsSold)
+      .slice(0, 20);
+
+    const totalExpiring30 = [...branchExpiring.values()].reduce((a, b) => a + b, 0);
+    const totalExpiring60 = [...branchExpiring60.values()].reduce((a, b) => a + b, 0);
+    const totalExpiring90 = [...branchExpiring90.values()].reduce((a, b) => a + b, 0);
+    const totalExpired = [...branchExpired.values()].reduce((a, b) => a + b, 0);
+
+    const data: BranchIntelligenceMetrics = {
+      topBranchesByRevenue,
+      bottomBranchesByRevenue,
+      topBranchesByTransactions,
+      expiryRisk: {
+        expiringIn30Days: totalExpiring30,
+        expiringIn60Days: totalExpiring60,
+        expiringIn90Days: totalExpiring90,
+        expired: totalExpired,
+        atRiskBranches,
+      },
+      stockAlerts: {
+        outOfStock: allOutOfStock.slice(0, 50),
+        lowStock: allLowStock.slice(0, 50),
+        totalOutOfStock: allOutOfStock.length,
+        totalLowStock: allLowStock.length,
+      },
+      topProductsByRevenue: allProductRevenue,
+      topProductsByQuantity: allProductQty,
+    };
+
+    return { data, error: null };
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : "Failed to load branch intelligence." };
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Billing & Subscription Management
 // ═══════════════════════════════════════════════════════════════════════
@@ -3062,4 +3304,1160 @@ export async function toggleNewsPostPublish(
 
   if (error) return { error: error.message };
   return { error: null };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// HQ Messaging — broadcast alerts to pharmacies and suppliers
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface HQMessage {
+  id: string;
+  title: string;
+  body: string;
+  kind: "info" | "warning" | "urgent" | "promo";
+  target_scope: "all_pharmacies" | "all_suppliers" | "all" | "account" | "branch";
+  target_account_id: string | null;
+  target_branch_id: string | null;
+  created_at: string;
+  created_by: string;
+}
+
+export interface SendHQMessageInput {
+  title: string;
+  body: string;
+  kind?: "info" | "warning" | "urgent" | "promo";
+  target_scope: "all_pharmacies" | "all_suppliers" | "all" | "account" | "branch";
+  target_account_id?: string | null;
+  target_branch_id?: string | null;
+}
+
+export async function sendHQMessage(
+  input: SendHQMessageInput
+): Promise<{ error: string | null }> {
+  const auth = await assertHQAuth();
+  if (auth.error) return { error: auth.error };
+
+  const supabase = await createServiceClient();
+
+  const { data: msgData, error: msgError } = await supabase
+    .from("hq_messages")
+    .insert({
+      title: input.title.trim(),
+      body: input.body.trim(),
+      kind: input.kind ?? "info",
+      target_scope: input.target_scope,
+      target_account_id: input.target_account_id ?? null,
+      target_branch_id: input.target_branch_id ?? null,
+      created_by: auth.adminId,
+    })
+    .select("id")
+    .single();
+
+  if (msgError) return { error: msgError.message };
+
+  // Also create notification rows for each target recipient
+  try {
+    if (input.target_scope === "all" || input.target_scope === "all_pharmacies" || input.target_scope === "all_suppliers") {
+      let accountQuery = supabase.from("accounts").select("id");
+      if (input.target_scope === "all_pharmacies") accountQuery = accountQuery.eq("type", "pharmacy");
+      else if (input.target_scope === "all_suppliers") accountQuery = accountQuery.eq("type", "supplier");
+
+      const { data: targetAccounts } = await accountQuery;
+      if (targetAccounts && targetAccounts.length > 0) {
+        const notifications = targetAccounts.map((a: { id: string }) => ({
+          account_id: a.id,
+          kind: input.kind ?? "info",
+          title: input.title.trim(),
+          body: input.body.trim(),
+        }));
+        await supabase.from("notifications").insert(notifications);
+      }
+    } else if (input.target_scope === "account" && input.target_account_id) {
+      await supabase.from("notifications").insert({
+        account_id: input.target_account_id,
+        kind: input.kind ?? "info",
+        title: input.title.trim(),
+        body: input.body.trim(),
+      });
+    } else if (input.target_scope === "branch" && input.target_branch_id) {
+      await supabase.from("notifications").insert({
+        branch_id: input.target_branch_id,
+        kind: input.kind ?? "info",
+        title: input.title.trim(),
+        body: input.body.trim(),
+      });
+    }
+  } catch {
+    // Non-fatal — notifications are best-effort
+  }
+
+  return { error: null };
+}
+
+export async function getHQMessages(): Promise<{
+  data: HQMessage[] | null;
+  error: string | null;
+}> {
+  const auth = await assertHQAuth();
+  if (auth.error) return { data: null, error: auth.error };
+
+  const supabase = await createServiceClient();
+  try {
+    const { data, error } = await supabase
+      .from("hq_messages")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) return { data: null, error: error.message };
+    return { data: data ?? [], error: null };
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : "Failed to load messages." };
+  }
+}
+
+export async function deleteHQMessage(
+  id: string
+): Promise<{ error: string | null }> {
+  const auth = await assertHQAuth();
+  if (auth.error) return { error: auth.error };
+
+  const supabase = await createServiceClient();
+  const { error } = await supabase.from("hq_messages").delete().eq("id", id);
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// HQ Audit Log — god-mode searchable action trail
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  detail: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+  admin_id: string | null;
+  admin_email: string | null;
+  account_id: string | null;
+  branch_id: string | null;
+}
+
+export interface AuditLogFilter {
+  query?: string;
+  action?: string;
+  entity_type?: string;
+  admin_id?: string;
+  account_id?: string;
+  branch_id?: string;
+  from_date?: string;
+  to_date?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function searchAuditLog(
+  filter: AuditLogFilter
+): Promise<{ data: AuditLogEntry[] | null; total: number; error: string | null }> {
+  const auth = await assertHQAuth();
+  if (auth.error) return { data: null, total: 0, error: auth.error };
+
+  const supabase = await createServiceClient();
+  const limit = filter.limit ?? 50;
+  const offset = filter.offset ?? 0;
+
+  try {
+    let q = supabase
+      .from("hq_audit_log")
+      .select("*", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (filter.query) {
+      q = q.or(
+        `action.ilike.%${filter.query}%,entity_type.ilike.%${filter.query}%,detail.ilike.%${filter.query}%`
+      );
+    }
+    if (filter.action) q = q.eq("action", filter.action);
+    if (filter.entity_type) q = q.eq("entity_type", filter.entity_type);
+    if (filter.admin_id) q = q.eq("admin_id", filter.admin_id);
+    if (filter.account_id) q = q.eq("account_id", filter.account_id);
+    if (filter.branch_id) q = q.eq("branch_id", filter.branch_id);
+    if (filter.from_date) q = q.gte("created_at", filter.from_date);
+    if (filter.to_date) q = q.lte("created_at", filter.to_date);
+
+    const { data, error, count } = await q;
+    if (error) return { data: null, total: 0, error: error.message };
+
+    return { data: data ?? [], total: count ?? 0, error: null };
+  } catch (e) {
+    return { data: null, total: 0, error: e instanceof Error ? e.message : "Failed to search audit log." };
+  }
+}
+
+export async function logHQAction(params: {
+  action: string;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  detail?: string | null;
+  account_id?: string | null;
+  branch_id?: string | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
+}): Promise<{ error: string | null }> {
+  const auth = await assertHQAuth();
+  if (auth.error) return { error: auth.error };
+
+  const supabase = await createServiceClient();
+  const { error } = await supabase.from("hq_audit_log").insert({
+    action: params.action,
+    entity_type: params.entity_type ?? null,
+    entity_id: params.entity_id ?? null,
+    detail: params.detail ?? null,
+    admin_id: auth.adminId,
+    account_id: params.account_id ?? null,
+    branch_id: params.branch_id ?? null,
+    ip_address: params.ip_address ?? null,
+    user_agent: params.user_agent ?? null,
+    created_at: new Date().toISOString(),
+  });
+
+  return { error: error?.message ?? null };
+}
+
+export async function getAuditActionTypes(): Promise<{ data: string[]; error: string | null }> {
+  const auth = await assertHQAuth();
+  if (auth.error) return { data: [], error: auth.error };
+
+  const supabase = await createServiceClient();
+  try {
+    const { data, error } = await supabase
+      .from("hq_audit_log")
+      .select("action")
+      .limit(500);
+
+    if (error) return { data: [], error: error.message };
+
+    const types = [...new Set((data ?? []).map((r: { action: string }) => r.action))];
+    return { data: types.sort(), error: null };
+  } catch (e) {
+    return { data: [], error: e instanceof Error ? e.message : "Failed to load action types." };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Market Intelligence — deep Palantir-level analytics
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface MarketIntelligenceMetrics {
+  quoteFunnel: { status: string; count: number; conversionRate: number }[];
+  supplierPerformance: {
+    supplierId: string;
+    supplierName: string;
+    totalQuotes: number;
+    convertedQuotes: number;
+    conversionRate: number;
+    avgResponseHours: number | null;
+    totalOrderValue: number;
+    topProduct: string | null;
+  }[];
+  orderTrends: { date: string; orderCount: number; revenue: number }[];
+  productPerformance: {
+    productId: string;
+    genericName: string;
+    brandName: string | null;
+    category: string | null;
+    unitsSold: number;
+    revenue: number;
+    avgPrice: number;
+    orderCount: number;
+  }[];
+  regionalBreakdown: {
+    region: string;
+    accountCount: number;
+    branchCount: number;
+    orderCount: number;
+    revenue: number;
+    avgOrderValue: number;
+    topProduct: string | null;
+  }[];
+  engagementFunnel: {
+    stage: string;
+    count: number;
+  }[];
+  marketSummary: {
+    totalQuotes: number;
+    totalOrders: number;
+    totalRevenue: number;
+    avgOrderValue: number;
+    topSupplier: string | null;
+    topProduct: string | null;
+    topRegion: string | null;
+    conversionRate: number;
+  };
+}
+
+export async function getMarketIntelligence(periodDays: number): Promise<{ data: MarketIntelligenceMetrics | null; error: string | null }> {
+  const auth = await assertHQAuth();
+  if (auth.error) return { data: null, error: auth.error };
+
+  const supabase = await createServiceClient();
+  const periodStart = periodStartIso(periodDays);
+
+  try {
+    let quoteRequests: { id: string; status: string; account_id: string | null; created_at: string; converted_to_order_id: string | null }[] = [];
+    let accounts: { id: string; name: string; type: string; created_at: string; onboarding_completed_at: string | null }[] = [];
+    let branches: { id: string; account_id: string; name: string; region: string | null }[] = [];
+    let sales: { id: string; created_at: string; total: number; account_id: string | null; branch_id: string | null }[] = [];
+    let saleItems: { sale_id: string; batch_id: string; quantity: number; unit_price: number }[] = [];
+    let batches: { id: string; product_id: string; branch_id: string | null }[] = [];
+    let products: { id: string; generic_name: string; brand_name: string | null; category: string | null }[] = [];
+    let operators: { id: string; branch_id: string | null; created_at: string }[] = [];
+
+    try {
+      const results = await Promise.all([
+        supabase.from("quote_requests").select("id, status, account_id, created_at, converted_to_order_id").gte("created_at", periodStart),
+        supabase.from("accounts").select("id, name, type, created_at, onboarding_completed_at"),
+        supabase.from("branches").select("id, account_id, name, region"),
+        supabase.from("sales").select("id, created_at, total, account_id, branch_id").gte("created_at", periodStart),
+        supabase.from("sale_items").select("sale_id, batch_id, quantity, unit_price"),
+        supabase.from("batches").select("id, product_id, branch_id"),
+        supabase.from("products").select("id, generic_name, brand_name, category"),
+        supabase.from("operators").select("id, branch_id, created_at"),
+      ]);
+      quoteRequests = results[0].data ?? [];
+      accounts = results[1].data ?? [];
+      branches = results[2].data ?? [];
+      sales = results[3].data ?? [];
+      saleItems = results[4].data ?? [];
+      batches = results[5].data ?? [];
+      products = results[6].data ?? [];
+      operators = results[7].data ?? [];
+    } catch { /* tables may not exist */ }
+
+    const productMap = new Map(products.map((p) => [p.id, p]));
+    const accountMap = new Map(accounts.map((a) => [a.id, a]));
+    const branchMap = new Map(branches.map((b) => [b.id, b]));
+    const batchToProduct = new Map(batches.map((b) => [b.id, b.product_id]));
+    const saleIdToSale = new Map(sales.map((s) => [s.id, s]));
+    const branchAccountMap = new Map(branches.map((b) => [b.id, b.account_id]));
+
+    // Quote funnel
+    const quoteStatuses = ["pending", "contacted", "quoted", "ordered", "closed"];
+    const quoteFunnel = quoteStatuses.map((status) => {
+      const count = quoteRequests.filter((q) => q.status === status).length;
+      return { status, count, conversionRate: 0 };
+    });
+
+    const convertedQuotes = quoteRequests.filter((q) => q.converted_to_order_id).length;
+    const conversionRate = quoteRequests.length > 0 ? (convertedQuotes / quoteRequests.length) * 100 : 0;
+
+    // Supplier performance — group quotes by account (supplier)
+    const supplierStats = new Map<string, { totalQuotes: number; convertedQuotes: number; totalResponseMs: number; responseCount: number; orderValue: number; productCounts: Map<string, number> }>();
+    for (const q of quoteRequests) {
+      if (!q.account_id) continue;
+      const acc = accountMap.get(q.account_id);
+      if (!acc || acc.type !== "supplier") continue;
+      const existing = supplierStats.get(q.account_id) ?? { totalQuotes: 0, convertedQuotes: 0, totalResponseMs: 0, responseCount: 0, orderValue: 0, productCounts: new Map() };
+      existing.totalQuotes++;
+      if (q.converted_to_order_id) existing.convertedQuotes++;
+      const created = new Date(q.created_at).getTime();
+      // Response time: estimate from created_at (in real impl would have responded_at column)
+      existing.productCounts.set(q.id, (existing.productCounts.get(q.id) ?? 0) + 1);
+      supplierStats.set(q.account_id, existing);
+    }
+
+    // For orders, attribute revenue to supplier account
+    for (const s of sales) {
+      if (!s.account_id) continue;
+      const acc = accountMap.get(s.account_id);
+      if (!acc || acc.type !== "supplier") continue;
+      const existing = supplierStats.get(s.account_id) ?? { totalQuotes: 0, convertedQuotes: 0, totalResponseMs: 0, responseCount: 0, orderValue: 0, productCounts: new Map() };
+      existing.orderValue += Number(s.total) || 0;
+      supplierStats.set(s.account_id, existing);
+    }
+
+    const supplierPerformance = [...supplierStats.entries()].map(([supplierId, stats]) => {
+      const acc = accountMap.get(supplierId);
+      const topProduct = [...stats.productCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+      const topProductName = topProduct ? productMap.get(topProduct)?.generic_name ?? null : null;
+      return {
+        supplierId,
+        supplierName: acc?.name ?? "Unknown",
+        totalQuotes: stats.totalQuotes,
+        convertedQuotes: stats.convertedQuotes,
+        conversionRate: stats.totalQuotes > 0 ? Math.round((stats.convertedQuotes / stats.totalQuotes) * 100) : 0,
+        avgResponseHours: stats.responseCount > 0 ? Math.round((stats.totalResponseMs / stats.responseCount / 3600000) * 10) / 10 : null,
+        totalOrderValue: Math.round(stats.orderValue),
+        topProduct: topProductName,
+      };
+    }).sort((a, b) => b.totalOrderValue - a.totalOrderValue);
+
+    // Order trends by day
+    const orderTrendsMap = new Map<string, { orderCount: number; revenue: number }>();
+    for (const s of sales) {
+      const date = s.created_at ? s.created_at.split("T")[0] : "unknown";
+      const existing = orderTrendsMap.get(date) ?? { orderCount: 0, revenue: 0 };
+      existing.orderCount++;
+      existing.revenue += Number(s.total) || 0;
+      orderTrendsMap.set(date, existing);
+    }
+    const orderTrends = [...orderTrendsMap.entries()]
+      .map(([date, v]) => ({ date, orderCount: v.orderCount, revenue: Math.round(v.revenue) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Product performance
+    const productStats = new Map<string, { unitsSold: number; revenue: number; orderCount: Set<string> }>();
+    for (const si of saleItems) {
+      const productId = batchToProduct.get(si.batch_id);
+      if (!productId) continue;
+      const sale = saleIdToSale.get(si.sale_id);
+      const existing = productStats.get(productId) ?? { unitsSold: 0, revenue: 0, orderCount: new Set() };
+      existing.unitsSold += si.quantity;
+      existing.revenue += (Number(si.unit_price) || 0) * si.quantity;
+      if (sale) existing.orderCount.add(sale.id);
+      productStats.set(productId, existing);
+    }
+    const productPerformance = [...productStats.entries()].map(([productId, stats]) => {
+      const p = productMap.get(productId);
+      return {
+        productId,
+        genericName: p?.generic_name ?? "Unknown",
+        brandName: p?.brand_name ?? null,
+        category: p?.category ?? null,
+        unitsSold: stats.unitsSold,
+        revenue: Math.round(stats.revenue),
+        avgPrice: stats.unitsSold > 0 ? Math.round(stats.revenue / stats.unitsSold) : 0,
+        orderCount: stats.orderCount.size,
+      };
+    }).sort((a, b) => b.revenue - a.revenue).slice(0, 50);
+
+    // Regional breakdown
+    const regionStats = new Map<string, { accountCount: number; branchCount: number; orderCount: number; revenue: number; productCounts: Map<string, number> }>();
+    for (const b of branches) {
+      const region = b.region ?? "Unknown";
+      const existing = regionStats.get(region) ?? { accountCount: 0, branchCount: 0, orderCount: 0, revenue: 0, productCounts: new Map() };
+      existing.branchCount++;
+      const acc = accountMap.get(b.account_id);
+      if (acc) {
+        const accExisting = regionStats.get(region) ?? { accountCount: 0, branchCount: 0, orderCount: 0, revenue: 0, productCounts: new Map() };
+        accExisting.accountCount++;
+        regionStats.set(region, accExisting);
+      }
+    }
+    for (const s of sales) {
+      const branchId = s.branch_id;
+      if (!branchId) continue;
+      const branch = branchMap.get(branchId);
+      if (!branch) continue;
+      const region = branch.region ?? "Unknown";
+      const existing = regionStats.get(region) ?? { accountCount: 0, branchCount: 0, orderCount: 0, revenue: 0, productCounts: new Map() };
+      existing.orderCount++;
+      existing.revenue += Number(s.total) || 0;
+      regionStats.set(region, existing);
+    }
+    const regionalBreakdown = [...regionStats.entries()].map(([region, stats]) => ({
+      region,
+      accountCount: stats.accountCount,
+      branchCount: stats.branchCount,
+      orderCount: stats.orderCount,
+      revenue: Math.round(stats.revenue),
+      avgOrderValue: stats.orderCount > 0 ? Math.round(stats.revenue / stats.orderCount) : 0,
+      topProduct: null,
+    })).sort((a, b) => b.revenue - a.revenue);
+
+    // Engagement funnel
+    const totalAccounts = accounts.length;
+    const onboardedAccounts = accounts.filter((a) => a.onboarding_completed_at).length;
+    const accountsWithSales = new Set(sales.map((s) => s.account_id).filter(Boolean)).size;
+    const repeatBuyers = [...sales.reduce((acc, s) => {
+      if (s.account_id) acc.set(s.account_id, (acc.get(s.account_id) ?? 0) + 1);
+      return acc;
+    }, new Map<string, number>()).values()].filter((c) => c > 1).length;
+
+    const engagementFunnel = [
+      { stage: "Signed Up", count: totalAccounts },
+      { stage: "Onboarded", count: onboardedAccounts },
+      { stage: "First Order", count: accountsWithSales },
+      { stage: "Repeat Buyers", count: repeatBuyers },
+    ];
+
+    const totalRevenue = sales.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+    const avgOrderValue = sales.length > 0 ? totalRevenue / sales.length : 0;
+    const topSupplierEntry = supplierPerformance[0];
+    const topProductEntry = productPerformance[0];
+    const topRegionEntry = regionalBreakdown[0];
+
+    const data: MarketIntelligenceMetrics = {
+      quoteFunnel: quoteFunnel.map((f, i) => ({ ...f, conversionRate: i === 0 ? 100 : quoteFunnel[i - 1].count > 0 ? Math.round((f.count / quoteFunnel[i - 1].count) * 100) : 0 })),
+      supplierPerformance,
+      orderTrends,
+      productPerformance,
+      regionalBreakdown,
+      engagementFunnel,
+      marketSummary: {
+        totalQuotes: quoteRequests.length,
+        totalOrders: sales.length,
+        totalRevenue: Math.round(totalRevenue),
+        avgOrderValue: Math.round(avgOrderValue),
+        topSupplier: topSupplierEntry?.supplierName ?? null,
+        topProduct: topProductEntry?.genericName ?? null,
+        topRegion: topRegionEntry?.region ?? null,
+        conversionRate: Math.round(conversionRate * 10) / 10,
+      },
+    };
+
+    return { data, error: null };
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : "Failed to load market intelligence." };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Logistics Intelligence — stock movements, transfers, expiry heatmap
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface LogisticsMetrics {
+  stockMovements: {
+    productId: string;
+    genericName: string;
+    branchId: string;
+    branchName: string;
+    movementType: "sale" | "restock" | "adjustment" | "transfer";
+    quantity: number;
+    date: string;
+  }[];
+  expiryHeatmap: {
+    productId: string;
+    genericName: string;
+    category: string | null;
+    branchId: string;
+    branchName: string;
+    expiryDate: string;
+    daysUntilExpiry: number;
+    quantity: number;
+    status: "expired" | "critical" | "warning" | "ok";
+  }[];
+  transferAnalysis: {
+    fromBranchId: string;
+    fromBranchName: string;
+    toBranchId: string;
+    toBranchName: string;
+    transferCount: number;
+    totalQuantity: number;
+  }[];
+  stockAlertsSummary: {
+    outOfStockProducts: { productId: string; genericName: string; branchCount: number }[];
+    lowStockProducts: { productId: string; genericName: string; branchCount: number; avgQuantity: number }[];
+    expiringBatches: { daysUntil: number; count: number }[];
+    totalOutOfStock: number;
+    totalLowStock: number;
+    totalExpiring: number;
+  };
+  reorderRecommendations: {
+    productId: string;
+    genericName: string;
+    category: string | null;
+    avgDailyUsage: number;
+    currentStock: number;
+    daysOfStockRemaining: number;
+    reorderPoint: number;
+    urgency: "critical" | "low" | "ok";
+  }[];
+  logisticsSummary: {
+    totalBatches: number;
+    totalStockValue: number;
+    avgBatchesPerBranch: number;
+    outOfStockBranches: number;
+    fullyStockedBranches: number;
+    avgDaysToExpiry: number;
+  };
+}
+
+export async function getLogisticsIntelligence(periodDays: number): Promise<{ data: LogisticsMetrics | null; error: string | null }> {
+  const auth = await assertHQAuth();
+  if (auth.error) return { data: null, error: auth.error };
+
+  const supabase = await createServiceClient();
+  const periodStart = periodStartIso(periodDays);
+
+  try {
+    let branches: { id: string; name: string; account_id: string }[] = [];
+    let batches: { id: string; product_id: string; branch_id: string | null; quantity: number; cost_price: number; sale_price: number; expiry_date: string | null }[] = [];
+    let products: { id: string; generic_name: string; brand_name: string | null; category: string | null }[] = [];
+    let sales: { id: string; created_at: string; branch_id: string | null }[] = [];
+    let saleItems: { sale_id: string; batch_id: string; quantity: number }[] = [];
+
+    try {
+      const results = await Promise.all([
+        supabase.from("branches").select("id, name, account_id"),
+        supabase.from("batches").select("id, product_id, branch_id, quantity, cost_price, sale_price, expiry_date"),
+        supabase.from("products").select("id, generic_name, brand_name, category"),
+        supabase.from("sales").select("id, created_at, branch_id").gte("created_at", periodStart),
+        supabase.from("sale_items").select("sale_id, batch_id, quantity"),
+      ]);
+      branches = results[0].data ?? [];
+      batches = results[1].data ?? [];
+      products = results[2].data ?? [];
+      sales = results[3].data ?? [];
+      saleItems = results[4].data ?? [];
+    } catch { /* tables may not exist */ }
+
+    const productMap = new Map(products.map((p) => [p.id, p]));
+    const branchMap = new Map(branches.map((b) => [b.id, b]));
+    const batchToBranch = new Map(batches.map((b) => [b.id, b.branch_id]));
+    const batchToProduct = new Map(batches.map((b) => [b.id, b.product_id]));
+
+    const now = Date.now();
+    const dayMs = 86400000;
+
+    // Expiry heatmap
+    const expiryHeatmap: LogisticsMetrics["expiryHeatmap"] = [];
+    for (const bat of batches) {
+      if (!bat.expiry_date || !bat.branch_id) continue;
+      const daysUntilExpiry = Math.round((new Date(bat.expiry_date).getTime() - now) / dayMs);
+      let status: "expired" | "critical" | "warning" | "ok" = "ok";
+      if (daysUntilExpiry < 0) status = "expired";
+      else if (daysUntilExpiry <= 30) status = "critical";
+      else if (daysUntilExpiry <= 90) status = "warning";
+
+      const p = productMap.get(bat.product_id);
+      const b = branchMap.get(bat.branch_id);
+      expiryHeatmap.push({
+        productId: bat.product_id,
+        genericName: p?.generic_name ?? "Unknown",
+        category: p?.category ?? null,
+        branchId: bat.branch_id,
+        branchName: b?.name ?? "Unknown",
+        expiryDate: bat.expiry_date,
+        daysUntilExpiry,
+        quantity: bat.quantity,
+        status,
+      });
+    }
+
+    // Expiry distribution
+    const expiringBatches: { daysUntil: number; count: number }[] = [];
+    for (const bat of batches) {
+      if (!bat.expiry_date) continue;
+      const days = Math.round((new Date(bat.expiry_date).getTime() - now) / dayMs);
+      if (days < 0) continue;
+      const bucket = Math.floor(days / 30) * 30;
+      const existing = expiringBatches.find((e) => e.daysUntil === bucket);
+      if (existing) existing.count++;
+      else expiringBatches.push({ daysUntil: bucket, count: 1 });
+    }
+
+    // Stock alerts
+    const outOfStockMap = new Map<string, Set<string>>();
+    const lowStockMap = new Map<string, { branchCount: number; totalQty: number }>();
+
+    for (const bat of batches) {
+      if (!bat.branch_id) continue;
+      const productName = productMap.get(bat.product_id)?.generic_name ?? "Unknown";
+      if (bat.quantity <= 0) {
+        if (!outOfStockMap.has(bat.product_id)) outOfStockMap.set(bat.product_id, new Set());
+        outOfStockMap.get(bat.product_id)!.add(bat.branch_id);
+      } else if (bat.quantity < 10) {
+        const existing = lowStockMap.get(bat.product_id) ?? { branchCount: 0, totalQty: 0 };
+        existing.branchCount++;
+        existing.totalQty += bat.quantity;
+        lowStockMap.set(bat.product_id, existing);
+      }
+    }
+
+    const outOfStockProducts = [...outOfStockMap.entries()].map(([productId, branchIds]) => {
+      const p = productMap.get(productId);
+      return { productId, genericName: p?.generic_name ?? "Unknown", branchCount: branchIds.size };
+    }).sort((a, b) => b.branchCount - a.branchCount);
+
+    const lowStockProducts = [...lowStockMap.entries()].map(([productId, stats]) => {
+      const p = productMap.get(productId);
+      return { productId, genericName: p?.generic_name ?? "Unknown", branchCount: stats.branchCount, avgQuantity: Math.round(stats.totalQty / stats.branchCount) };
+    }).sort((a, b) => a.avgQuantity - b.avgQuantity);
+
+    // Stock movements (from sale items)
+    const stockMovements: LogisticsMetrics["stockMovements"] = [];
+    const saleIdToSale = new Map(sales.map((s) => [s.id, s]));
+    for (const si of saleItems) {
+      const sale = saleIdToSale.get(si.sale_id);
+      if (!sale || !sale.branch_id) continue;
+      const productId = batchToProduct.get(si.batch_id);
+      if (!productId) continue;
+      const p = productMap.get(productId);
+      const b = branchMap.get(sale.branch_id);
+      stockMovements.push({
+        productId,
+        genericName: p?.generic_name ?? "Unknown",
+        branchId: sale.branch_id,
+        branchName: b?.name ?? "Unknown",
+        movementType: "sale",
+        quantity: si.quantity,
+        date: sale.created_at.split("T")[0],
+      });
+    }
+
+    // Reorder recommendations
+    const productBranchStock = new Map<string, { totalStock: number; branchCount: number }>();
+    for (const bat of batches) {
+      const existing = productBranchStock.get(bat.product_id) ?? { totalStock: 0, branchCount: 0 };
+      existing.totalStock += Math.max(0, bat.quantity);
+      existing.branchCount++;
+      productBranchStock.set(bat.product_id, existing);
+    }
+
+    const productDailyUsage = new Map<string, number>();
+    for (const si of saleItems) {
+      const productId = batchToProduct.get(si.batch_id);
+      if (!productId) continue;
+      productDailyUsage.set(productId, (productDailyUsage.get(productId) ?? 0) + si.quantity);
+    }
+
+    const reorderRecommendations: LogisticsMetrics["reorderRecommendations"] = [];
+    const totalDays = periodDays || 30;
+    for (const [productId, stats] of productBranchStock.entries()) {
+      const avgDaily = (productDailyUsage.get(productId) ?? 0) / totalDays;
+      const daysRemaining = avgDaily > 0 ? stats.totalStock / avgDaily : 999;
+      const p = productMap.get(productId);
+      let urgency: "critical" | "low" | "ok" = "ok";
+      if (daysRemaining < 7) urgency = "critical";
+      else if (daysRemaining < 30) urgency = "low";
+      reorderRecommendations.push({
+        productId,
+        genericName: p?.generic_name ?? "Unknown",
+        category: p?.category ?? null,
+        avgDailyUsage: Math.round(avgDaily * 100) / 100,
+        currentStock: stats.totalStock,
+        daysOfStockRemaining: Math.round(daysRemaining),
+        reorderPoint: Math.round(avgDaily * 14),
+        urgency,
+      });
+    }
+
+    const totalBatches = batches.length;
+    const totalStockValue = batches.reduce((sum, b) => sum + (Number(b.cost_price) || 0) * Math.max(0, b.quantity), 0);
+    const avgBatchesPerBranch = branches.length > 0 ? Math.round((totalBatches / branches.length) * 10) / 10 : 0;
+    const outOfStockBranches = new Set([...outOfStockMap.values()].flatMap((s) => [...s])).size;
+    const fullyStockedBranches = branches.length - outOfStockBranches;
+
+    const validExpiryDays = batches.filter((b) => b.expiry_date).map((b) => Math.max(0, (new Date(b.expiry_date!).getTime() - now) / dayMs));
+    const avgDaysToExpiry = validExpiryDays.length > 0 ? Math.round(validExpiryDays.reduce((a, b) => a + b, 0) / validExpiryDays.length) : 0;
+
+    const data: LogisticsMetrics = {
+      stockMovements: stockMovements.slice(0, 500),
+      expiryHeatmap: expiryHeatmap.sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry),
+      transferAnalysis: [],
+      stockAlertsSummary: {
+        outOfStockProducts,
+        lowStockProducts,
+        expiringBatches: expiringBatches.sort((a, b) => a.daysUntil - b.daysUntil),
+        totalOutOfStock: outOfStockProducts.reduce((sum, p) => sum + p.branchCount, 0),
+        totalLowStock: lowStockProducts.reduce((sum, p) => sum + p.branchCount, 0),
+        totalExpiring: expiryHeatmap.filter((e) => e.daysUntilExpiry <= 90).length,
+      },
+      reorderRecommendations: reorderRecommendations.sort((a, b) => a.daysOfStockRemaining - b.daysOfStockRemaining).slice(0, 30),
+      logisticsSummary: {
+        totalBatches,
+        totalStockValue: Math.round(totalStockValue),
+        avgBatchesPerBranch,
+        outOfStockBranches,
+        fullyStockedBranches,
+        avgDaysToExpiry,
+      },
+    };
+
+    return { data, error: null };
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : "Failed to load logistics intelligence." };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// User Activity Intelligence — per-user, per-install, DAU/WAU
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface UserActivityMetrics {
+  installStats: {
+    totalInstalls: number;
+    windowsInstalls: number;
+    macInstalls: number;
+    linuxInstalls: number;
+    activeInstalls: number;
+    installsByDay: { date: string; count: number }[];
+  };
+  operatorStats: {
+    totalOperators: number;
+    byRole: { role: string; count: number }[];
+    recentCreations: { operatorId: string; name: string; branchName: string; createdAt: string }[];
+    topOperatorsByActivity: { operatorId: string; name: string; branchName: string; actionCount: number }[];
+  };
+  dauWauMetrics: {
+    dau: number;
+    wau: number;
+    dauWauRatio: number;
+    dailyActiveUsers: { date: string; count: number }[];
+    hourlyActivity: { hour: string; actions: number }[];
+  };
+  userActivityTrail: {
+    userId: string;
+    userEmail: string | null;
+    accountName: string;
+    branchName: string;
+    role: string;
+    lastSeen: string;
+    actionCount: number;
+    recentActions: { action: string; detail: string | null; created_at: string }[];
+  }[];
+  sessionInsights: {
+    avgSessionDurationMinutes: number;
+    avgActionsPerSession: number;
+    peakHour: number;
+    mostActiveDay: string;
+  };
+}
+
+export async function getUserActivityMetrics(periodDays: number): Promise<{ data: UserActivityMetrics | null; error: string | null }> {
+  const auth = await assertHQAuth();
+  if (auth.error) return { data: null, error: auth.error };
+
+  const supabase = await createServiceClient();
+  const periodStart = periodStartIso(periodDays);
+
+  try {
+    let installs: { id: string; branch_id: string | null; platform: string | null; created_at: string; last_seen_at: string | null }[] = [];
+    let operators: { id: string; branch_id: string | null; name: string; role: string; created_at: string }[] = [];
+    let accounts: { id: string; name: string }[] = [];
+    let branches: { id: string; name: string; account_id: string }[] = [];
+    let activityLog: { id: string; operator_id: string | null; branch_id: string | null; action: string; detail: string | null; created_at: string }[] = [];
+
+    try {
+      const results = await Promise.all([
+        supabase.from("installs").select("id, branch_id, platform, created_at, last_seen_at"),
+        supabase.from("operators").select("id, branch_id, name, role, created_at"),
+        supabase.from("accounts").select("id, name"),
+        supabase.from("branches").select("id, name, account_id"),
+        supabase.from("activity_log").select("id, operator_id, branch_id, action, detail, created_at").gte("created_at", periodStart),
+      ]);
+      installs = results[0].data ?? [];
+      operators = results[1].data ?? [];
+      accounts = results[2].data ?? [];
+      branches = results[3].data ?? [];
+      activityLog = results[4].data ?? [];
+    } catch { /* tables may not exist */ }
+
+    const branchMap = new Map(branches.map((b) => [b.id, b]));
+    const accountMap = new Map(accounts.map((a) => [a.id, a]));
+    const branchAccountMap = new Map(branches.map((b) => [b.id, b.account_id]));
+
+    // Install stats
+    const windowsInstalls = installs.filter((i) => i.platform === "windows").length;
+    const macInstalls = installs.filter((i) => i.platform === "mac").length;
+    const linuxInstalls = installs.filter((i) => i.platform === "linux").length;
+    const thirtyDaysAgo = Date.now() - 30 * 86400000;
+    const activeInstalls = installs.filter((i) => i.last_seen_at && new Date(i.last_seen_at).getTime() > thirtyDaysAgo).length;
+
+    const installsByDayMap = new Map<string, number>();
+    for (const i of installs) {
+      const date = i.created_at ? i.created_at.split("T")[0] : "unknown";
+      installsByDayMap.set(date, (installsByDayMap.get(date) ?? 0) + 1);
+    }
+    const installsByDay = [...installsByDayMap.entries()].map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date));
+
+    // Operator stats
+    const roleCountMap = new Map<string, number>();
+    for (const op of operators) {
+      roleCountMap.set(op.role, (roleCountMap.get(op.role) ?? 0) + 1);
+    }
+    const byRole = [...roleCountMap.entries()].map(([role, count]) => ({ role, count }));
+
+    const recentCreations = operators
+      .filter((op) => op.created_at && new Date(op.created_at).getTime() > new Date(periodStart).getTime())
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 10)
+      .map((op) => {
+        const b = branchMap.get(op.branch_id ?? "");
+        return { operatorId: op.id, name: op.name, branchName: b?.name ?? "Unknown", createdAt: op.created_at };
+      });
+
+    // Activity per operator
+    const operatorActivityCount = new Map<string, number>();
+    for (const al of activityLog) {
+      if (al.operator_id) operatorActivityCount.set(al.operator_id, (operatorActivityCount.get(al.operator_id) ?? 0) + 1);
+    }
+    const topOperatorsByActivity = [...operatorActivityCount.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([operatorId, actionCount]) => {
+        const op = operators.find((o) => o.id === operatorId);
+        const b = branchMap.get(op?.branch_id ?? "");
+        return { operatorId, name: op?.name ?? "Unknown", branchName: b?.name ?? "Unknown", actionCount };
+      });
+
+    // DAU/WAU
+    const dailyActive = new Map<string, Set<string>>();
+    for (const al of activityLog) {
+      if (!al.created_at) continue;
+      const date = al.created_at.split("T")[0];
+      if (!dailyActive.has(date)) dailyActive.set(date, new Set());
+      // Use operator_id as user identifier
+      if (al.operator_id) dailyActive.get(date)!.add(al.operator_id);
+    }
+    const sortedDays = [...dailyActive.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+    const dau = sortedDays[0]?.[1].size ?? 0;
+    const last7Days = sortedDays.slice(0, 7);
+    const wau = new Set(last7Days.flatMap(([, users]) => [...users])).size;
+    const dailyActiveUsers = sortedDays.slice(0, 30).map(([date, users]) => ({ date, count: users.size }));
+
+    const hourlyActivityMap = new Map<string, number>();
+    for (let h = 0; h < 24; h++) hourlyActivityMap.set(String(h).padStart(2, "0"), 0);
+    for (const al of activityLog) {
+      if (!al.created_at) continue;
+      const hour = new Date(al.created_at).getHours();
+      hourlyActivityMap.set(String(hour).padStart(2, "0"), (hourlyActivityMap.get(String(hour).padStart(2, "0")) ?? 0) + 1);
+    }
+    const hourlyActivity = [...hourlyActivityMap.entries()].map(([hour, actions]) => ({ hour: `${hour}:00`, actions }));
+
+    // User activity trail — per operator
+    const operatorLastSeen = new Map<string, string>();
+    for (const al of activityLog) {
+      if (!al.operator_id) continue;
+      const existing = operatorLastSeen.get(al.operator_id);
+      if (!existing || al.created_at > existing) operatorLastSeen.set(al.operator_id, al.created_at);
+    }
+    const operatorActionCount = new Map<string, number>();
+    for (const al of activityLog) {
+      if (al.operator_id) operatorActionCount.set(al.operator_id, (operatorActionCount.get(al.operator_id) ?? 0) + 1);
+    }
+    const operatorRecentActions = new Map<string, { action: string; detail: string | null; created_at: string }[]>();
+    for (const al of activityLog) {
+      if (!al.operator_id) continue;
+      if (!operatorRecentActions.has(al.operator_id)) operatorRecentActions.set(al.operator_id, []);
+      const arr = operatorRecentActions.get(al.operator_id)!;
+      arr.unshift({ action: al.action, detail: al.detail, created_at: al.created_at });
+      if (arr.length > 5) arr.pop();
+    }
+
+    const userActivityTrail = operators.map((op) => {
+      const b = branchMap.get(op.branch_id ?? "");
+      const accId = b ? branchAccountMap.get(b.id) : null;
+      const acc = accId ? accountMap.get(accId) : null;
+      return {
+        userId: op.id,
+        userEmail: null,
+        accountName: acc?.name ?? "Unknown",
+        branchName: b?.name ?? "Unknown",
+        role: op.role,
+        lastSeen: operatorLastSeen.get(op.id) ?? "Never",
+        actionCount: operatorActionCount.get(op.id) ?? 0,
+        recentActions: operatorRecentActions.get(op.id) ?? [],
+      };
+    }).filter((u) => u.actionCount > 0).sort((a, b) => b.actionCount - a.actionCount);
+
+    // Session insights
+    const peakHourEntry = [...hourlyActivityMap.entries()].sort((a, b) => b[1] - a[1])[0];
+    const dayCountMap = new Map<string, number>();
+    for (const [date] of dailyActive) dayCountMap.set(date, (dayCountMap.get(date) ?? 0) + 1);
+    const mostActiveDay = [...dayCountMap.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "N/A";
+
+    const data: UserActivityMetrics = {
+      installStats: {
+        totalInstalls: installs.length,
+        windowsInstalls,
+        macInstalls,
+        linuxInstalls,
+        activeInstalls,
+        installsByDay,
+      },
+      operatorStats: {
+        totalOperators: operators.length,
+        byRole,
+        recentCreations,
+        topOperatorsByActivity,
+      },
+      dauWauMetrics: {
+        dau,
+        wau,
+        dauWauRatio: wau > 0 ? Math.round((dau / wau) * 100) / 100 : 0,
+        dailyActiveUsers,
+        hourlyActivity,
+      },
+      userActivityTrail,
+      sessionInsights: {
+        avgSessionDurationMinutes: 0,
+        avgActionsPerSession: operatorActionCount.size > 0 ? Math.round([...operatorActionCount.values()].reduce((a, b) => a + b, 0) / operatorActionCount.size) : 0,
+        peakHour: peakHourEntry ? parseInt(peakHourEntry[0]) : 0,
+        mostActiveDay,
+      },
+    };
+
+    return { data, error: null };
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : "Failed to load user activity metrics." };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// PDF Report Generation — filtered intelligence reports
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface ReportFilters {
+  from_date?: string;
+  to_date?: string;
+  region?: string;
+  account_id?: string;
+  branch_id?: string;
+  include_map?: boolean;
+  sections?: ("summary" | "revenue" | "products" | "users" | "logistics")[];
+}
+
+export async function generateIntelligenceReport(filters: ReportFilters): Promise<{ data: string | null; error: string | null }> {
+  const auth = await assertHQAuth();
+  if (auth.error) return { data: null, error: auth.error };
+
+  try {
+    const [marketResult, logisticsResult, userResult] = await Promise.all([
+      getMarketIntelligence(90),
+      getLogisticsIntelligence(90),
+      getUserActivityMetrics(90),
+    ]);
+
+    const market = marketResult.data;
+    const logistics = logisticsResult.data;
+    const users = userResult.data;
+
+    const now = new Date().toISOString();
+    const reportTitle = `Cervos Intelligence Report — ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`;
+
+    const sections = filters.sections ?? ["summary", "revenue", "products", "users", "logistics"];
+    const lines: string[] = [
+      `CEROVS NETWORK INTELLIGENCE REPORT`,
+      `Generated: ${now}`,
+      `Filters: from=${filters.from_date ?? "all"} to=${filters.to_date ?? "all"} region=${filters.region ?? "all"}`,
+      `Account=${filters.account_id ?? "all"} Branch=${filters.branch_id ?? "all"}`,
+      ``,
+      `═══════════════════════════════════════════════════════════════════`,
+      ``,
+    ];
+
+    if (sections.includes("summary")) {
+      lines.push(`NETWORK SUMMARY`);
+      lines.push(`───────────────────────────────────────────────────────────`);
+      if (market) {
+        lines.push(`Total Revenue:   TZS ${market.marketSummary.totalRevenue.toLocaleString()}`);
+        lines.push(`Total Orders:    ${market.marketSummary.totalOrders.toLocaleString()}`);
+        lines.push(`Avg Order Value: TZS ${market.marketSummary.avgOrderValue.toLocaleString()}`);
+        lines.push(`Total Quotes:    ${market.marketSummary.totalQuotes.toLocaleString()}`);
+        lines.push(`Quote Conversion: ${market.marketSummary.conversionRate}%`);
+        lines.push(`Top Supplier:    ${market.marketSummary.topSupplier ?? "N/A"}`);
+        lines.push(`Top Product:     ${market.marketSummary.topProduct ?? "N/A"}`);
+        lines.push(`Top Region:      ${market.marketSummary.topRegion ?? "N/A"}`);
+      }
+      if (logistics) {
+        lines.push(``);
+        lines.push(`LOGISTICS SUMMARY`);
+        lines.push(`Total Batches:       ${logistics.logisticsSummary.totalBatches}`);
+        lines.push(`Total Stock Value:   TZS ${logistics.logisticsSummary.totalStockValue.toLocaleString()}`);
+        lines.push(`Avg Batches/Branch:  ${logistics.logisticsSummary.avgBatchesPerBranch}`);
+        lines.push(`Out-of-Stock Branches: ${logistics.logisticsSummary.outOfStockBranches}`);
+        lines.push(`Avg Days to Expiry:  ${logistics.logisticsSummary.avgDaysToExpiry}d`);
+      }
+      if (users) {
+        lines.push(``);
+        lines.push(`USER SUMMARY`);
+        lines.push(`Total Installs:    ${users.installStats.totalInstalls}`);
+        lines.push(`Active Installs:   ${users.installStats.activeInstalls}`);
+        lines.push(`Total Operators:   ${users.operatorStats.totalOperators}`);
+        lines.push(`DAU:               ${users.dauWauMetrics.dau}`);
+        lines.push(`WAU:               ${users.dauWauMetrics.wau}`);
+        lines.push(`DAU/WAU Ratio:     ${users.dauWauMetrics.dauWauRatio}`);
+      }
+      lines.push(``);
+    }
+
+    if (sections.includes("revenue") && market) {
+      lines.push(`TOP SUPPLIERS BY REVENUE`);
+      lines.push(`───────────────────────────────────────────────────────────`);
+      for (const s of market.supplierPerformance.slice(0, 15)) {
+        lines.push(`${s.supplierName.padEnd(30)} TZS ${s.totalOrderValue.toLocaleString().padStart(12)} | ${s.conversionRate}% conv | ${s.totalQuotes} quotes`);
+      }
+      lines.push(``);
+      lines.push(`ORDER TRENDS (last ${market.orderTrends.length} days)`);
+      lines.push(`───────────────────────────────────────────────────────────`);
+      for (const t of market.orderTrends.slice(-30)) {
+        lines.push(`${t.date}  ${String(t.orderCount).padStart(6)} orders  TZS ${t.revenue.toLocaleString().padStart(12)}`);
+      }
+      lines.push(``);
+    }
+
+    if (sections.includes("products") && market) {
+      lines.push(`TOP 30 PRODUCTS BY REVENUE`);
+      lines.push(`───────────────────────────────────────────────────────────`);
+      lines.push(`#   Product                        Units      Revenue          Avg Price`);
+      lines.push(`───────────────────────────────────────────────────────────`);
+      market.productPerformance.slice(0, 30).forEach((p, i) => {
+        lines.push(`${String(i + 1).padStart(2)}. ${p.genericName.padEnd(30)} ${String(p.unitsSold).padStart(8)}  TZS ${p.revenue.toLocaleString().padStart(14)}  TZS ${String(p.avgPrice).padStart(10)}`);
+      });
+      lines.push(``);
+    }
+
+    if (sections.includes("logistics") && logistics) {
+      lines.push(`EXPIRY ALERT — CRITICAL (< 30 days)`);
+      lines.push(`───────────────────────────────────────────────────────────`);
+      const critical = logistics.expiryHeatmap.filter((e) => e.status === "critical" || e.status === "expired").slice(0, 20);
+      if (critical.length === 0) {
+        lines.push(`No critical expiry batches.`);
+      } else {
+        for (const e of critical) {
+          lines.push(`${e.genericName.padEnd(30)} ${e.branchName.padEnd(20)} ${e.daysUntilExpiry < 0 ? "EXPIRED" : `${e.daysUntilExpiry}d`.padStart(6)}  qty: ${e.quantity}`);
+        }
+      }
+      lines.push(``);
+      lines.push(`OUT-OF-STOCK PRODUCTS`);
+      lines.push(`───────────────────────────────────────────────────────────`);
+      if (logistics.stockAlertsSummary.outOfStockProducts.length === 0) {
+        lines.push(`No out-of-stock products.`);
+      } else {
+        for (const p of logistics.stockAlertsSummary.outOfStockProducts.slice(0, 20)) {
+          lines.push(`${p.genericName.padEnd(30)} ${String(p.branchCount).padStart(6)} branches`);
+        }
+      }
+      lines.push(``);
+      lines.push(`REORDER RECOMMENDATIONS`);
+      lines.push(`───────────────────────────────────────────────────────────`);
+      for (const r of logistics.reorderRecommendations.filter((r) => r.urgency !== "ok").slice(0, 20)) {
+        lines.push(`${r.genericName.padEnd(30)} ${String(r.daysOfStockRemaining).padStart(5)}d left  stock: ${String(r.currentStock).padStart(6)}  daily: ${r.avgDailyUsage.toFixed(1)} [${r.urgency}]`);
+      }
+      lines.push(``);
+    }
+
+    if (sections.includes("users") && users) {
+      lines.push(`TOP 20 OPERATORS BY ACTIVITY`);
+      lines.push(`───────────────────────────────────────────────────────────`);
+      for (const u of users.operatorStats.topOperatorsByActivity.slice(0, 20)) {
+        lines.push(`${u.name.padEnd(25)} ${u.branchName.padEnd(20)} ${String(u.actionCount).padStart(6)} actions`);
+      }
+      lines.push(``);
+      lines.push(`USER ACTIVITY TRAIL (recent)`);
+      lines.push(`───────────────────────────────────────────────────────────`);
+      for (const u of users.userActivityTrail.slice(0, 30)) {
+        lines.push(`${u.name.padEnd(25)} ${u.branchName.padEnd(20)} last seen: ${u.lastSeen}  ${u.actionCount} actions`);
+        for (const a of u.recentActions.slice(0, 3)) {
+          lines.push(`  └─ ${a.action} ${a.detail ? `| ${a.detail.slice(0, 60)}` : ""}`);
+        }
+      }
+      lines.push(``);
+    }
+
+    lines.push(`═══════════════════════════════════════════════════════════════════`);
+    lines.push(`Report generated by Cervos HQ Console · ${now}`);
+    lines.push(`This report contains confidential business intelligence.`);
+
+    return { data: lines.join("\n"), error: null };
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : "Failed to generate report." };
+  }
 }
