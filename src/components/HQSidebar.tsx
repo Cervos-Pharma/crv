@@ -14,8 +14,6 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { cookies } from "next/headers";
-import { HQ_COOKIE_NAME } from "@/lib/hq-auth";
 
 interface HQSidebarProps {
   openSupportCount?: number;
@@ -43,9 +41,8 @@ export default function HQSidebar({ openSupportCount = 0 }: HQSidebarProps) {
   const router = useRouter();
 
   async function handleLogout() {
-    const cookieStore = await cookies();
-    cookieStore.delete(HQ_COOKIE_NAME);
-    router.refresh();
+    document.cookie = `hq_sess=; Max-Age=0; path=/`;
+    router.push("/hq");
   }
 
   return (

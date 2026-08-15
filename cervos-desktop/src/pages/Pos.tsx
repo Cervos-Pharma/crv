@@ -129,6 +129,9 @@ export default function Pos() {
 
     setIsProcessing(true);
     try {
+      const branchResult = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
+      const branchId = branchResult.length > 0 ? JSON.parse(branchResult[0].value) : null
+
       const saleId = Et();
       const receiptId = Et();
       const receiptNumber = `RCP-${Date.now().toString(36).toUpperCase()}`;
@@ -141,7 +144,7 @@ export default function Pos() {
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           saleId,
-          null,
+          branchId,
           currentOperator?.id || null,
           total,
           parseFloat(discount || "0"),
@@ -174,7 +177,7 @@ export default function Pos() {
 
       await qs("sales", saleId, "insert", {
         id: saleId,
-        branch_id: null,
+        branch_id: branchId,
         operator_id: currentOperator?.id || null,
         total,
         discount: parseFloat(discount || "0"),

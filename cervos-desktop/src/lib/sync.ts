@@ -75,13 +75,16 @@ export async function Nd(
 ): Promise<void> {
   if (!isConfigured) throw new Error('Supabase is not configured yet.')
   Ie = supabase
-  const { error } = await Ie.auth.signInWithPassword({
+  const { error, data } = await Ie.auth.signInWithPassword({
     email: n,
     password: t,
   })
   if (error) {
     Ie = null
     throw new Error(error.message)
+  }
+  if (data.session) {
+    await saveSession(data.session)
   }
 }
 
@@ -111,6 +114,11 @@ export async function Pd(): Promise<void> {
   await Pe(
     `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     ['branch_id', JSON.stringify(branchId)]
+  )
+
+  await Pe(
+    `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    ['account_id', JSON.stringify(account.id)]
   )
 }
 

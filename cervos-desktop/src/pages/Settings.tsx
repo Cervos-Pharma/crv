@@ -4,6 +4,7 @@ import { Fe, Pe, Et } from '../lib/database'
 import { np, tp } from '../lib/sync'
 import { useAuthStore } from '../lib/store'
 import { fetchOperators, createOperator, updateOperator, deleteOperator } from '../lib/queries'
+import { supabaseUrl } from '../lib/supabase'
 import type { Operator } from '../types'
 
 export default function Settings() {
@@ -98,12 +99,18 @@ export default function Settings() {
       if (!branchResult.length) { setSyncMessage('No branch set.'); return }
       const branchId = JSON.parse(branchResult[0].value)
 
+      const accountIdResult = await Fe("SELECT value FROM app_settings WHERE key = 'account_id'")
+      const accountId = accountIdResult.length > 0 ? JSON.parse(accountIdResult[0].value) : null
+      if (!accountId) { setSyncMessage('No account ID found.'); return }
+
       const lastPull = await sync.q0(branchId)
       const since = lastPull || '1970-01-01T00:00:00Z'
 
-      const serverUrl = (window as any).__SUPABASE_URL__
-      const res = await fetch(`${serverUrl}/functions/v1/sync?since=${encodeURIComponent(since)}`, {
-        headers: { Authorization: `Bearer ${sessionData.session.access_token}` }
+      const res = await fetch(`${supabaseUrl}/api/sync?since=${encodeURIComponent(since)}`, {
+        headers: {
+          Authorization: `Bearer ${sessionData.session.access_token}`,
+          'x-account-id': accountId
+        }
       })
       if (!res.ok) throw new Error(`Sync failed: ${res.status}`)
       const data = await res.json()
