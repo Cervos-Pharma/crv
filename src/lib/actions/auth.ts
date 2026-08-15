@@ -130,11 +130,13 @@ async function linkInviteToAccount(inviteToken: string, accountId: string): Prom
 
   if (updateError) return { error: updateError.message };
 
+  const trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString();
   await supabase
     .from("accounts")
     .update({
       download_enabled: false,
       subscription_status: "trial",
+      trial_ends_at: trialEndsAt,
       invite_token: inviteToken,
     })
     .eq("id", accountId);

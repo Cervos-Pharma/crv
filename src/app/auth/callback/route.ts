@@ -31,6 +31,7 @@ export async function GET(request: Request) {
             .maybeSingle();
 
           if (invite && invite.status === "pending" && new Date(invite.token_expires_at) > new Date()) {
+            const trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString();
             await serviceClient
               .from("supplier_invites")
               .update({
@@ -45,6 +46,7 @@ export async function GET(request: Request) {
               .update({
                 download_enabled: false,
                 subscription_status: "trial",
+                trial_ends_at: trialEndsAt,
                 invite_token: inviteToken,
               })
               .eq("id", account.id);

@@ -33,6 +33,7 @@ export default function PublicNav({ activePath = "" }: { activePath?: string }) 
     { key: "nav.platform",  href: "/#features" },
     { key: "nav.suppliers", href: "/supplier/quote" },
     { key: "nav.news",      href: "/news" },
+    { key: "nav.support",    href: "/support" },
     { key: "nav.download",  href: "/download" },
   ];
 

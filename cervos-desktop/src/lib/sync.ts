@@ -66,11 +66,13 @@ export async function Pd(): Promise<void> {
   if (!account) return
 
   const branchId = Et()
+  const trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString()
   await Ie.from('branches').insert({
     id: branchId,
     account_id: account.id,
     name: 'Main Branch',
     subscription_status: 'trial',
+    trial_ends_at: trialEndsAt,
   })
 
   await Pe(
@@ -139,7 +141,7 @@ export async function syncSubscription(branchId: string): Promise<void> {
   try {
     const { data: branch } = await Ie
       .from('branches')
-      .select('subscription_status, subscription_tier, grace_ends_at')
+      .select('subscription_status, subscription_tier, grace_ends_at, trial_ends_at')
       .eq('id', branchId)
       .maybeSingle()
 
@@ -155,6 +157,10 @@ export async function syncSubscription(branchId: string): Promise<void> {
       await Pe(
         `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
         ['grace_ends_at', JSON.stringify(branch.grace_ends_at)]
+      )
+      await Pe(
+        `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        ['trial_ends_at', JSON.stringify(branch.trial_ends_at)]
       )
     }
   } catch (error) {

@@ -23,6 +23,14 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 
+const TRIAL_DAYS = 7;
+const GRACE_DAYS = 3;
+const OFFLINE_LOCK_DAYS = 30;
+
+function addDays(days: number): string {
+  return new Date(Date.now() + days * 86400000).toISOString();
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type BranchStatus = "active" | "trial" | "grace" | "locked";
@@ -153,6 +161,64 @@ function resolveStatus(
   return "locked";
 }
 
+/**
+ * Evaluates and auto-transitions a branch's subscription status.
+ * Called during every sync to enforce the lifecycle:
+ *   trial (7 days) → grace (3 days) → locked
+ * Also locks branches that have been offline for > 30 days while not on active plan.
+ *
+ * Uses service-role client to bypass RLS.
+ */
+async function transitionBranchSubscription(
+  branchId: string,
+  accountId: string,
+  currentStatus: string,
+  trialEndsAt: string | null,
+  graceEndsAt: string | null,
+  lastSyncedAt: string | null
+): Promise<string> {
+  const supabase = await createServiceClient();
+  const now = new Date();
+
+  const patch: Record<string, unknown> = {};
+  let newStatus = currentStatus;
+
+  // Trial → Grace transition
+  if (currentStatus === "trial" && trialEndsAt && new Date(trialEndsAt) <= now) {
+    patch.grace_ends_at = addDays(GRACE_DAYS);
+    patch.trial_ends_at = null;
+    patch.subscription_status = "grace";
+    newStatus = "grace";
+  }
+
+  // Grace → Locked transition
+  if ((currentStatus === "grace" || newStatus === "grace") && graceEndsAt && new Date(graceEndsAt) <= now) {
+    patch.subscription_status = "locked";
+    patch.grace_ends_at = null;
+    newStatus = "locked";
+  }
+
+  // Offline lock: > 30 days since last sync and not active
+  if (lastSyncedAt && newStatus !== "active" && newStatus !== "locked") {
+    const lastSync = new Date(lastSyncedAt);
+    const daysSinceSync = (now.getTime() - lastSync.getTime()) / 86400000;
+    if (daysSinceSync > OFFLINE_LOCK_DAYS) {
+      patch.subscription_status = "locked";
+      newStatus = "locked";
+    }
+  }
+
+  if (Object.keys(patch).length > 0) {
+    await supabase
+      .from("branches")
+      .update(patch)
+      .eq("id", branchId)
+      .eq("account_id", accountId);
+  }
+
+  return newStatus;
+}
+
 // ─── Delta-sync ───────────────────────────────────────────────────────────────
 
 /**
@@ -200,13 +266,43 @@ export async function getSyncData(since: string, accountId: string): Promise<Syn
     };
   }
 
-  const branchesResult = await supabase
+  // Fetch all branches for the account to evaluate subscription status
+  const { data: allBranches } = await supabase
     .from("branches")
     .select("id, name, account_id, lat, lng, subscription_status, trial_ends_at, grace_ends_at, last_synced_at, updated_at")
+    .eq("account_id", account.id);
+
+  // Also fetch branches modified since `since` for delta calculation
+  const { data: branchesModified } = await supabase
+    .from("branches")
+    .select("id")
     .eq("account_id", account.id)
     .gt("updated_at", since);
 
-  const branchIds = (branchesResult.data ?? []).map((b: { id: string }) => b.id);
+  const branchesModifiedSince = new Set((branchesModified ?? []).map((b: { id: string }) => b.id));
+
+  // Auto-transition subscription status for all branches (trial→grace→locked, offline lock)
+  const transitionedBranches: SyncResponse["branches"] = [];
+
+  for (const branch of (allBranches ?? []) as SyncResponse["branches"]) {
+    const newStatus = await transitionBranchSubscription(
+      branch.id,
+      account.id,
+      branch.subscription_status ?? "active",
+      branch.trial_ends_at,
+      branch.grace_ends_at,
+      branch.last_synced_at
+    );
+    // Include if status changed OR if branch data was modified since `since`
+    if (newStatus !== (branch.subscription_status ?? "active") || branchesModifiedSince.has(branch.id)) {
+      transitionedBranches.push({
+        ...branch,
+        subscription_status: newStatus,
+      });
+    }
+  }
+
+  const branchIds = (allBranches ?? []).map((b: { id: string }) => b.id);
 
   const [batchesResult, productsResult] = await Promise.all([
     branchIds.length > 0
@@ -219,7 +315,7 @@ export async function getSyncData(since: string, accountId: string): Promise<Syn
   ]);
 
   return {
-    branches: (branchesResult.data ?? []) as SyncResponse["branches"],
+    branches: transitionedBranches,
     batches: (batchesResult.data ?? []) as SyncResponse["batches"],
     products: (productsResult.data ?? []) as SyncResponse["products"],
     serverTime: new Date().toISOString(),

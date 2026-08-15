@@ -25,6 +25,7 @@ export const strings: Record<string, Record<Lang, string>> = {
   "nav.platform":      { EN: "Platform",    SW: "Jukwaa" },
   "nav.suppliers":     { EN: "Suppliers",   SW: "Wasambazaji" },
   "nav.news":          { EN: "News",        SW: "Habari" },
+  "nav.support":       { EN: "Support",     SW: "Msaada" },
   "nav.download":      { EN: "Download",    SW: "Pakua" },
   "nav.login":         { EN: "Log In",      SW: "Ingia" },
   "nav.getstarted":    { EN: "Get Started", SW: "Anza Sasa" },

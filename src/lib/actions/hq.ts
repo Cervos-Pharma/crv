@@ -41,6 +41,14 @@ const PLACEHOLDER_SECRET = "placeholder-hq-secret";
 /** HQ session cookie lifespan — 8 hours */
 const COOKIE_MAX_AGE = 60 * 60 * 8;
 
+/** Subscription durations */
+const TRIAL_DAYS = 7;
+const GRACE_DAYS = 3;
+
+function addDays(days: number): string {
+  return new Date(Date.now() + days * 86400000).toISOString();
+}
+
 // ─── Private helpers ────────────────────────────────────────────────────────
 
 /**
@@ -2754,8 +2762,24 @@ export async function recordManualPayment(
     // Update account billing status (ltv may not exist)
     await supabase
       .from("accounts")
-      .update({ billing_status: "active" })
+      .update({
+        billing_status: "active",
+        subscription_status: "active",
+        trial_ends_at: null,
+        grace_ends_at: null,
+        subscription_expires_at: null,
+      })
       .eq("id", accountId);
+
+    // Activate all branches for this account
+    await supabase
+      .from("branches")
+      .update({
+        subscription_status: "active",
+        trial_ends_at: null,
+        grace_ends_at: null,
+      })
+      .eq("account_id", accountId);
 
     return { error: null };
   } catch (e) {
