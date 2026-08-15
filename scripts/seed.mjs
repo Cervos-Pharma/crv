@@ -103,13 +103,12 @@ async function createAuthUser(email, password, metadata) {
 async function seed() {
   console.log("Starting seed...\n");
 
-  // 0. Create HQ admin (upsert)
+  // 0. Create HQ admin (upsert without role)
   console.log("Creating HQ admin...");
   const { error: hqError } = await supabase.from("hq_admins").upsert({
     email: "cervospharma@gmail.com",
     name: "CervoPharma HQ",
     password_hash: hashHQPassword("threebodyproblem"),
-    role: "admin",
   }, { onConflict: "email" });
   if (hqError) {
     console.error("HQ admin error:", hqError.message);
@@ -117,10 +116,32 @@ async function seed() {
     console.log("  HQ admin ready: cervospharma@gmail.com / threebodyproblem");
   }
 
-  // 1. Create pharmacy auth user
-  console.log("Creating pharmacy auth user...");
-  const pharmacyUser = await createAuthUser("cervospharma@gmail.com", "threebodyproblem", { name: "CervoPharma Pharmacy" });
-  console.log(`  Pharmacy user created: ${pharmacyUser.id}`);
+  // 1. Check if pharmacy user already exists
+  console.log("Checking for existing pharmacy user...");
+  const { data: existingUsers } = await supabase.auth.admin.listUsers();
+  let pharmacyUser = existingUsers?.users.find((u) => u.email === "cervospharma@gmail.com");
+
+  if (!pharmacyUser) {
+    console.log("Creating pharmacy auth user...");
+    try {
+      const result = await createAuthUser("cervospharma@gmail.com", "threebodyproblem", { name: "CervoPharma Pharmacy" });
+      pharmacyUser = result;
+    } catch (e) {
+      console.log("  Could not create auth user (may already exist or schema issue):", e instanceof Error ? e.message : e);
+      console.log("  Attempting to find existing user...");
+      const { data: retryUsers } = await supabase.auth.admin.listUsers();
+      pharmacyUser = retryUsers?.users.find((u) => u.email === "cervospharma@gmail.com");
+    }
+  } else {
+    console.log("  Pharmacy user already exists");
+  }
+
+  if (!pharmacyUser) {
+    console.error("  Could not get or create pharmacy user - skipping account creation");
+    console.log("\nSeed completed with errors.");
+    return;
+  }
+  console.log(`  Pharmacy user: ${pharmacyUser.id}`);
 
   // 2. Create pharmacy account
   console.log("Creating pharmacy account...");
@@ -431,14 +452,11 @@ async function seed() {
   }
   console.log("  Order items created");
 
-  console.log("\nSeed completed successfully!");
-  console.log("\nHQ Console: cervospharma@gmail.com / threebodyproblem");
-  console.log("\nPharmacy (web): cervospharma@gmail.com / threebodyproblem");
-  console.log("Supplier (web): supplier@pharmacorp.com / password123");
-  console.log("\nOperator PINs:");
-  console.log("  John Admin: 1234 (admin)");
-  console.log("  Jane Operator: 5678 (operator)");
-  console.log("  Bob Operator: 9999 (operator)");
+  console.log("\nSeed completed!");
+  console.log("\nHQ Console: cervospharma@gmail.com / threebodyproblem (created)");
+  console.log("\nPharmacy/Supplier accounts: sign up at /auth");
+  console.log("  Note: auth.users creation failed due to schema - use web signup at /auth");
+  console.log("\nSupplier account: supplier@pharmacorp.com / password123 (auth user needs manual creation)"));
 }
 
 seed().catch((err) => {

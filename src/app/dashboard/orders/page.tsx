@@ -22,11 +22,10 @@ export default async function OrdersPage() {
   if (account?.type !== "pharmacy") redirect("/dashboard");
 
   const orders = await getOrders(account!.id);
-  const firstBranch = null;
 
   return (
     <div className="flex min-h-screen bg-surface">
-      <PharmacySidebar branchName={firstBranch?.name} accountName={account?.name} />
+      <PharmacySidebar branchName={undefined} accountName={account?.name} />
       <div className="ml-64 flex-1 flex flex-col">
         <header className="bg-surface fixed top-0 right-0 h-16 border-b border-outline-variant flex items-center px-8 w-[calc(100%-16rem)] z-10">
           <div>
