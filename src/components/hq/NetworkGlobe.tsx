@@ -178,16 +178,16 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
               <span style="color:#666;font-size:12px">${p.accountName}</span><br/>
               <span style="color:${STATUS_COLORS[p.status]};font-size:11px;font-weight:600">${p.status.toUpperCase().replace("_", " ")}</span>
             </div>`
-          )
-          .onGlobeReady(() => {
-            if (isMounted) {
-              instance.autoRotate(0.3);
-              globeInstanceRef.current = instance;
-            }
-          })
-          .onError((err: string) => {
-            console.warn("Globe error:", err);
-          });
+          );
+
+        try {
+          const controls = instance.controls();
+          if (controls) {
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = 0.3;
+          }
+        } catch (_) {}
+        globeInstanceRef.current = instance;
       };
 
       // Check for WebGL
