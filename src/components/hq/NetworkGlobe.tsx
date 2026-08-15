@@ -38,8 +38,8 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
       if (view === "map") return;
 
       try {
-        // @ts-ignore globe.gl types
-        const Globe = (await import("globe.gl")).default as any as (el: HTMLElement) => Record<string, unknown>;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const Globe = (await import("globe.gl")).default as any;
         const points = branchLocations.filter((b) => b.lat && b.lng);
 
         if (points.length === 0) {
@@ -49,7 +49,8 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
 
         if (!isMounted || !containerRef.current) return;
 
-        const globeInstance = Globe(containerRef.current)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const globeInstance = (Globe(containerRef.current) as any)
           .container(containerRef.current)
           .globeImageUrl("//unpkg.com/three-globe/example/img/earth-blue-marble.jpg")
           .bumpImageUrl("//unpkg.com/three-globe/example/img/earth-topology.png")
@@ -68,8 +69,8 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
             </div>`
           )
           .onGlobeReady(() => {
-            if (isMounted && containerRef.current) {
-              (globeInstance as { autoRotate: (n: number) => typeof globeInstance }).autoRotate(0.3);
+            if (isMounted) {
+              (globeInstance as any).autoRotate(0.3);
             }
           });
 
