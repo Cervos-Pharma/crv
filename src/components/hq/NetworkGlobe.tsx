@@ -38,8 +38,8 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
       if (view === "map") return;
 
       try {
-        // @ts-ignore globe.gl ships its own types but TS may not find them
-        const Globe = (await import("globe.gl")).default;
+        // @ts-ignore globe.gl types
+        const Globe = (await import("globe.gl")).default as any as (el: HTMLElement) => Record<string, unknown>;
         const points = branchLocations.filter((b) => b.lat && b.lng);
 
         if (points.length === 0) {
@@ -49,7 +49,7 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
 
         if (!isMounted || !containerRef.current) return;
 
-        const globeInstance = Globe()
+        const globeInstance = Globe(containerRef.current)
           .container(containerRef.current)
           .globeImageUrl("//unpkg.com/three-globe/example/img/earth-blue-marble.jpg")
           .bumpImageUrl("//unpkg.com/three-globe/example/img/earth-topology.png")
