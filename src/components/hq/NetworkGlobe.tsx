@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import type { NetworkHealthMetrics } from "@/lib/actions/hq";
 
 interface BranchPoint {
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   name: string;
   accountName: string;
   status: "healthy" | "at_risk" | "locked";
@@ -16,89 +16,206 @@ interface Props {
   branchLocations?: BranchPoint[];
 }
 
-const STATUS_COLORS = {
+const STATUS_COLORS: Record<string, string> = {
   healthy: "#146C2E",
   at_risk: "#B3261E",
   locked: "#7D5260",
 };
 
+declare global {
+  interface Window {
+    Globe: unknown;
+    THREE: unknown;
+  }
+}
+
 export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const globeRef = useRef<unknown>(null);
+  const globeContainerRef = useRef<HTMLDivElement>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const globeInstanceRef = useRef<unknown>(null);
+  const leafletMapRef = useRef<unknown>(null);
   const [view, setView] = useState<"globe" | "map">("globe");
   const [globeError, setGlobeError] = useState<string | null>(null);
 
+  const validPoints = branchLocations.filter((b) => b.lat != null && b.lng != null);
+
+  // ── 2D Leaflet map ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (view !== "map") return;
+
+    let isMounted = true;
+    let map: ReturnType<typeof import("leaflet")["map"]> | null = null;
+
+    (async () => {
+      const L = (await import("leaflet")).default;
+
+      if (!isMounted || !mapContainerRef.current) return;
+
+      map = L.map(mapContainerRef.current).setView([-6.7924, 39.2083], 6);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+        maxZoom: 18,
+      }).addTo(map);
+
+      if (validPoints.length === 0) return;
+
+      const maxRevenue = Math.max(...validPoints.map((b) => {
+        const n = networkHealth as Record<string, unknown>;
+        const locs = (n.branchLocations as typeof validPoints | undefined) ?? [];
+        return 1;
+      }), 1);
+
+      for (const point of validPoints) {
+        if (point.lat == null || point.lng == null) continue;
+        const color = STATUS_COLORS[point.status] ?? "#6750A4";
+        L.circleMarker([point.lat, point.lng], {
+          radius: 6,
+          fillColor: color,
+          color: "#fff",
+          weight: 1.5,
+          fillOpacity: 0.8,
+        }).bindPopup(`
+          <div style="font-family:sans-serif;min-width:140px">
+            <strong>${point.name}</strong><br/>
+            <span style="color:#666;font-size:12px">${point.accountName}</span><br/>
+            <span style="color:${color};font-size:11px;font-weight:600">${point.status.toUpperCase().replace("_", " ")}</span>
+          </div>
+        `).addTo(map);
+      }
+
+      if (validPoints.length > 1) {
+        const group = L.featureGroup(
+          validPoints
+            .filter((p) => p.lat != null && p.lng != null)
+            .map((p) => L.circleMarker([p.lat!, p.lng!], { radius: 0.1, interactive: false }))
+        );
+        map.fitBounds(group.getBounds().pad(0.1));
+      }
+
+      if (isMounted) leafletMapRef.current = map;
+    })();
+
+    return () => {
+      isMounted = false;
+      if (map) {
+        map.remove();
+        map = null;
+        leafletMapRef.current = null;
+      }
+    };
+  }, [view, validPoints.length, branchLocations]);
+
+  // ── 3D Globe via CDN script ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (view !== "globe") return;
 
     let isMounted = true;
     let cleanup: (() => void) | undefined;
 
-    const init = async () => {
-      if (view === "map") return;
+    const init = () => {
+      if (!isMounted || !globeContainerRef.current) return;
+      if (validPoints.length === 0) {
+        setGlobeError("No branch locations available for 3D view.");
+        return;
+      }
 
+      const container = globeContainerRef.current;
+
+      // Load globe.gl from CDN (avoids Three.js bundling issues in Vercel Edge)
+      const loadGlobe = () => {
+        if (!window.Globe) {
+          const script = document.createElement("script");
+          script.src = "https://unpkg.com/globe.gl@2.27.2/dist/globe.gl.js";
+          script.onload = () => {
+            if (!isMounted) return;
+            mountGlobe(window.Globe as (...args: unknown[]) => unknown);
+          };
+          script.onerror = () => {
+            if (isMounted) setGlobeError("Failed to load globe.gl. Please switch to 2D map.");
+          };
+          document.head.appendChild(script);
+        } else {
+          mountGlobe(window.Globe as (...args: unknown[]) => unknown);
+        }
+      };
+
+      const mountGlobe = (GlobeFn: (...args: unknown[]) => unknown) => {
+        if (!isMounted || !container) return;
+
+        try {
+          const instance = (GlobeFn as (el: HTMLElement) => Record<string, unknown>)(container);
+
+          instance
+            .globeImageUrl("//unpkg.com/three-globe/example/img/earth-blue-marble.jpg")
+            .bumpImageUrl("//unpkg.com/three-globe/example/img/earth-topology.png")
+            .backgroundImageUrl("//unpkg.com/three-globe/example/img/night-sky.png")
+            .pointsData(validPoints)
+            .pointLat("lat")
+            .pointLng("lng")
+            .pointColor((p: BranchPoint) => STATUS_COLORS[p.status] ?? "#6750A4")
+            .pointAltitude(0.01)
+            .pointRadius(0.4)
+            .pointLabel((p: BranchPoint) =>
+              `<div style="font-family:sans-serif;color:#222;padding:8px;min-width:140px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
+                <strong>${p.name}</strong><br/>
+                <span style="color:#666;font-size:12px">${p.accountName}</span><br/>
+                <span style="color:${STATUS_COLORS[p.status]};font-size:11px;font-weight:600">${p.status.toUpperCase().replace("_", " ")}</span>
+              </div>`
+            );
+
+          // Detect WebGL support
+          try {
+            (instance as Record<string, unknown>).onGlobeReady(() => {
+              if (isMounted) {
+                (instance as { autoRotate: (n: number) => void }).autoRotate(0.3);
+                globeInstanceRef.current = instance;
+              }
+            });
+          } catch {
+            if (isMounted) {
+              setGlobeError("WebGL not available on this device. Please use the 2D map view.");
+            }
+          }
+        } catch {
+          if (isMounted) setGlobeError("Failed to initialize 3D globe. Please use 2D map.");
+        }
+      };
+
+      // Check for WebGL
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const Globe = (await import("globe.gl")).default as any;
-        const points = branchLocations.filter((b) => b.lat && b.lng);
-
-        if (points.length === 0) {
-          if (isMounted) setGlobeError("No branch locations available for 3D view.");
+        const canvas = document.createElement("canvas");
+        const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+        if (!gl) {
+          if (isMounted) setGlobeError("WebGL not available on this device. Please use the 2D map view.");
           return;
         }
-
-        if (!isMounted || !containerRef.current) return;
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const globeInstance = (Globe(containerRef.current) as any)
-          .container(containerRef.current)
-          .globeImageUrl("//unpkg.com/three-globe/example/img/earth-blue-marble.jpg")
-          .bumpImageUrl("//unpkg.com/three-globe/example/img/earth-topology.png")
-          .backgroundImageUrl("//unpkg.com/three-globe/example/img/night-sky.png")
-          .pointsData(points)
-          .pointLat("lat")
-          .pointLng("lng")
-          .pointColor((p: BranchPoint) => STATUS_COLORS[p.status] ?? "#6750A4")
-          .pointAltitude(0.01)
-          .pointRadius(0.4)
-          .pointLabel((p: BranchPoint) =>
-            `<div style="font-family:sans-serif;color:#222;padding:8px;min-width:140px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-              <strong>${p.name}</strong><br/>
-              <span style="color:#666;font-size:12px">${p.accountName}</span><br/>
-              <span style="color:${STATUS_COLORS[p.status]};font-size:11px;font-weight:600">${p.status.toUpperCase()}</span>
-            </div>`
-          )
-          .onGlobeReady(() => {
-            if (isMounted) {
-              (globeInstance as any).autoRotate(0.3);
-            }
-          });
-
-        if (isMounted) {
-          globeRef.current = globeInstance;
-        }
       } catch {
-        if (isMounted) setGlobeError("WebGL not available. Switch to 2D map view.");
+        if (isMounted) setGlobeError("WebGL check failed. Please use the 2D map view.");
+        return;
       }
+
+      loadGlobe();
     };
 
-    if (view === "globe") {
-      init();
-    }
+    init();
 
     return () => {
       isMounted = false;
       cleanup?.();
-      if (globeRef.current) {
-        try { (globeRef.current as { destroy: () => void }).destroy(); } catch { /* ignore */ }
-        globeRef.current = null;
+      if (globeInstanceRef.current) {
+        try {
+          (globeInstanceRef.current as { destroy: () => void }).destroy();
+        } catch { /* ignore */ }
+        globeInstanceRef.current = null;
       }
     };
-  }, [view, branchLocations]);
+  }, [view, validPoints]);
+
+  const totalPlotted = validPoints.length;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 flex-wrap">
         <div className="flex rounded-lg border border-outline-variant overflow-hidden">
           <button
             onClick={() => setView("globe")}
@@ -117,15 +234,16 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
             2D Map
           </button>
         </div>
+
         <div className="flex items-center gap-4 flex-wrap">
-          {(Object.entries(STATUS_COLORS) as [keyof typeof STATUS_COLORS, string][]).map(([status, color]) => (
+          {(Object.entries(STATUS_COLORS)).map(([status, color]) => (
             <div key={status} className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
               <span className="font-body-sm text-on-surface-variant text-xs capitalize">{status.replace("_", " ")}</span>
             </div>
           ))}
           <span className="font-body-sm text-on-surface-variant text-xs ml-2">
-            {branchLocations.length} locations plotted
+            {totalPlotted} location{totalPlotted !== 1 ? "s" : ""} plotted
           </span>
         </div>
       </div>
@@ -136,7 +254,7 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
             <div className="text-center p-6">
               <p className="font-body-md text-on-surface-variant mb-3">{globeError}</p>
               <button
-                onClick={() => setView("map")}
+                onClick={() => { setGlobeError(null); setView("map"); }}
                 className="px-4 py-2 bg-primary text-white text-sm rounded-lg hover:opacity-90"
               >
                 Switch to 2D Map
@@ -145,16 +263,26 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
           </div>
         ) : (
           <div
-            ref={containerRef}
+            ref={globeContainerRef}
             className="w-full h-[420px] rounded-lg overflow-hidden border border-outline-variant"
             style={{ background: "#0a0a1a" }}
           />
         )
       ) : (
-        <div className="w-full h-[420px] flex items-center justify-center border border-outline-variant rounded-lg bg-surface-base">
-          <p className="font-body-md text-on-surface-variant">
-            2D view — use the Branch tab for detailed Leaflet map
-          </p>
+        <div className="space-y-3">
+          <div className="flex items-center gap-4 flex-wrap text-xs text-on-surface-variant">
+            {[
+              { color: STATUS_COLORS.healthy, label: "Healthy" },
+              { color: STATUS_COLORS.at_risk, label: "At Risk" },
+              { color: STATUS_COLORS.locked, label: "Locked" },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </div>
+          <div ref={mapContainerRef} className="w-full h-[420px] rounded-lg overflow-hidden border border-outline-variant z-0" />
         </div>
       )}
     </div>
