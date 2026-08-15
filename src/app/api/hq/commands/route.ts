@@ -16,11 +16,15 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { assertHQAuth } from "@/lib/actions/hq";
+import { cookies } from "next/headers";
+import { HQ_COOKIE_NAME, isValidHQToken } from "@/lib/hq-auth";
 
 export async function POST(req: NextRequest) {
-  const auth = await assertHQAuth();
-  if (auth.error) return NextResponse.json({ error: auth.error }, { status: 401 });
+  const cookieStore = await cookies();
+  const sessionToken = cookieStore.get(HQ_COOKIE_NAME)?.value;
+  if (!isValidHQToken(sessionToken)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   let body: {
     cmd: string;

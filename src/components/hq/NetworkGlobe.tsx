@@ -183,12 +183,12 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
             .onError((err: string) => {
               console.warn("Globe error:", err);
             });
-          } catch {
+          } catch (e) {
             if (isMounted) {
               setGlobeError("WebGL not available on this device. Please use the 2D map view.");
             }
           }
-        } catch {
+        } catch (e) {
           if (isMounted) setGlobeError("Failed to initialize 3D globe. Please use 2D map.");
         }
       };
