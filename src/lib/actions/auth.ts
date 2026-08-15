@@ -78,7 +78,6 @@ export async function signUp(opts: {
         entity_name: opts.entityName,
         invite_token: opts.inviteToken ?? null,
       },
-      emailConfirm: false,
     },
   });
 

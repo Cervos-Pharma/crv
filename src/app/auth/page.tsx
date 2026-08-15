@@ -147,7 +147,6 @@ function AuthForm() {
             invite_token: inviteData?.token || null,
           },
           emailRedirectTo: `${window.location.origin}/auth/callback`,
-          emailConfirm: false,
         },
       });
       if (error) { setToast({ message: error.message, type: "error" }); return; }
