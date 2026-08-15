@@ -1,5 +1,114 @@
 import { supabase } from './supabase'
-import { Product, Order, Quote, Notification, AnalyticsData, Supplier } from './types'
+import { Product, Order, Quote, Notification, AnalyticsData, Supplier, RemoteCommand } from './types'
+import { useSubscriptionStore } from './store'
+
+const STORAGE_KEY = 'cervos-subscription-storage'
+
+function getStoredSubscription() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      return parsed.state || null
+    }
+  } catch (e) {
+    console.error('Failed to read subscription from storage:', e)
+  }
+  return null
+}
+
+export async function syncSubscriptionStatus(supplierId: string): Promise<{
+  subscriptionStatus: 'active' | 'inactive' | 'trial' | 'past_due'
+  subscriptionTier: 'free' | 'starter' | 'professional' | 'enterprise'
+  graceEndsAt: string | null
+  trialEndsAt: string | null
+} | null> {
+  const { data, error } = await supabase
+    .from('suppliers')
+    .select('subscription_status, subscription_tier, grace_ends_at, trial_ends_at')
+    .eq('id', supplierId)
+    .single()
+
+  if (error || !data) {
+    return null
+  }
+
+  const subscriptionData = {
+    subscriptionStatus: data.subscription_status as 'active' | 'inactive' | 'trial' | 'past_due',
+    subscriptionTier: data.subscription_tier as 'free' | 'starter' | 'professional' | 'enterprise',
+    graceEndsAt: data.grace_ends_at,
+    trialEndsAt: data.trial_ends_at,
+  }
+
+  useSubscriptionStore.getState().setSubscription(subscriptionData)
+  return subscriptionData
+}
+
+export function checkSubscriptionValidity(): {
+  isValid: boolean
+  status: 'active' | 'inactive' | 'trial' | 'past_due' | null
+  tier: 'free' | 'starter' | 'professional' | 'enterprise' | null
+  graceEndsAt: string | null
+  trialEndsAt: string | null
+  daysRemaining: number | null
+} {
+  const stored = getStoredSubscription()
+  if (!stored) {
+    return {
+      isValid: false,
+      status: null,
+      tier: null,
+      graceEndsAt: null,
+      trialEndsAt: null,
+      daysRemaining: null,
+    }
+  }
+
+  const { subscriptionStatus, subscriptionTier, graceEndsAt, trialEndsAt } = stored
+  let daysRemaining: number | null = null
+
+  if (subscriptionStatus === 'trial' && trialEndsAt) {
+    const trialEnd = new Date(trialEndsAt)
+    const now = new Date()
+    daysRemaining = Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+  } else if (subscriptionStatus === 'past_due' && graceEndsAt) {
+    const graceEnd = new Date(graceEndsAt)
+    const now = new Date()
+    daysRemaining = Math.ceil((graceEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+  }
+
+  const isValid = subscriptionStatus === 'active' || subscriptionStatus === 'trial'
+
+  return {
+    isValid,
+    status: subscriptionStatus,
+    tier: subscriptionTier,
+    graceEndsAt,
+    trialEndsAt,
+    daysRemaining,
+  }
+}
+
+export async function fetchPendingCommands(supplierId: string): Promise<RemoteCommand[]> {
+  const { data, error } = await supabase
+    .from('remote_commands')
+    .select('*')
+    .eq('supplier_id', supplierId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+  return data || []
+}
+
+export async function acknowledgeCommand(commandId: string): Promise<void> {
+  const { error } = await supabase
+    .from('remote_commands')
+    .update({ status: 'acknowledged' })
+    .eq('id', commandId)
+
+  if (error) throw error
+}
 
 export async function fetchProducts(supplierId: string): Promise<Product[]> {
   const { data, error } = await supabase

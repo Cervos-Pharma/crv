@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/hooks'
 import { Supplier } from '../lib/types'
+import { syncSubscriptionStatus } from '../lib/queries'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -41,12 +42,16 @@ export default function Login() {
               country: '',
               subscription_status: 'trial',
               subscription_tier: 'free',
+              grace_ends_at: null,
+              trial_ends_at: null,
             })
             .select()
             .single()
 
           if (profileError) throw profileError
-          setSupplier(profile as Supplier)
+          const supplierData = profile as Supplier
+          setSupplier(supplierData)
+          await syncSubscriptionStatus(supplierData.id)
           navigate('/')
         }
       } else {
@@ -68,10 +73,11 @@ export default function Login() {
 
           if (profile.subscription_status === 'inactive' || profile.subscription_status === 'past_due') {
             setError('Your subscription is inactive. Please update your payment method.')
-            return
           }
 
-          setSupplier(profile as Supplier)
+          const supplierData = profile as Supplier
+          setSupplier(supplierData)
+          await syncSubscriptionStatus(supplierData.id)
           navigate('/')
         }
       }

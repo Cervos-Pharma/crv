@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useAuth } from '../lib/hooks'
+import { useNavigate } from 'react-router-dom'
+import { useAuth, useSubscription } from '../lib/hooks'
 import { updateSupplierProfile } from '../lib/queries'
 
 const steps = [
@@ -10,7 +11,9 @@ const steps = [
 ]
 
 export default function Onboarding() {
+  const navigate = useNavigate()
   const { supplier } = useAuth()
+  const { subscriptionStatus } = useSubscription()
   const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState({
     company_name: supplier?.company_name || '',
@@ -33,6 +36,10 @@ export default function Onboarding() {
       await updateSupplierProfile(supplier.id, formData)
       if (currentStep < 4) {
         setCurrentStep(currentStep + 1)
+      } else {
+        if (subscriptionStatus === 'inactive' || subscriptionStatus === 'past_due') {
+          navigate('/subscription')
+        }
       }
     } catch (error) {
       console.error('Failed to update profile:', error)

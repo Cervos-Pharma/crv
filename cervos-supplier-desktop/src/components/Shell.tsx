@@ -1,5 +1,6 @@
-import { Outlet, NavLink, useLocation } from 'react-router-dom'
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useUIStore } from '../lib/store'
+import { useSubscription } from '../lib/hooks'
 import NotificationsPanel from './NotificationsPanel'
 
 
@@ -16,8 +17,24 @@ const navItems = [
 ]
 
 export default function Shell() {
+  const navigate = useNavigate()
   const location = useLocation()
   const { sidebarCollapsed, toggleSidebar, notificationsOpen, setNotificationsOpen } = useUIStore()
+  const { subscriptionStatus } = useSubscription()
+
+  const getSubscriptionDotColor = () => {
+    switch (subscriptionStatus) {
+      case 'active':
+        return 'bg-green-500'
+      case 'trial':
+        return 'bg-yellow-500'
+      case 'inactive':
+      case 'past_due':
+        return 'bg-red-500'
+      default:
+        return 'bg-gray-500'
+    }
+  }
 
   return (
     <div className="h-screen flex bg-surface">
@@ -77,6 +94,14 @@ export default function Shell() {
           </h1>
 
           <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/subscription')}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-surface-300 transition-colors"
+              title="Subscription Status"
+            >
+              <span className={`w-2.5 h-2.5 rounded-full ${getSubscriptionDotColor()}`}></span>
+              <span className="material-symbols-outlined text-gray-400">credit_card</span>
+            </button>
             <button
               onClick={() => setNotificationsOpen(true)}
               className="relative p-2 rounded-lg hover:bg-surface-300 transition-colors"

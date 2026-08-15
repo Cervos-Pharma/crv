@@ -1,53 +1,59 @@
-import { useState, useEffect } from "react";
-import { Fe, Pe } from "../lib/database";
-import { np, tp } from "../lib/sync";
+import { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Fe, Pe } from '../lib/database'
+import { np, tp } from '../lib/sync'
+import { useAuthStore } from '../lib/store'
 
-interface SettingsProps {
-  onLogout: () => void;
-}
-
-export default function Settings({ onLogout }: SettingsProps) {
-  const [pharmacyName, setPharmacyName] = useState("");
-  const [stats, setStats] = useState({ linked: false, pendingCount: 0, lastSyncedAt: null as string | null });
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState("");
+export default function Settings() {
+  const navigate = useNavigate()
+  const { logout } = useAuthStore()
+  const [pharmacyName, setPharmacyName] = useState('')
+  const [stats, setStats] = useState({ linked: false, pendingCount: 0, lastSyncedAt: null as string | null })
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [syncMessage, setSyncMessage] = useState('')
 
   useEffect(() => {
-    loadSettings();
-  }, []);
+    loadSettings()
+  }, [])
 
   async function loadSettings() {
-    const nameResult = await Fe("SELECT value FROM app_settings WHERE key = 'pharmacy_name'");
+    const nameResult = await Fe("SELECT value FROM app_settings WHERE key = 'pharmacy_name'")
     if (nameResult.length > 0) {
-      setPharmacyName(JSON.parse(nameResult[0].value));
+      setPharmacyName(JSON.parse(nameResult[0].value))
     }
-    const s = await np();
-    setStats(s);
+    const s = await np()
+    setStats(s)
   }
 
   async function handleSaveName() {
     await Pe(
       `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      ["pharmacy_name", JSON.stringify(pharmacyName)]
-    );
+      ['pharmacy_name', JSON.stringify(pharmacyName)]
+    )
   }
 
   async function handleSync() {
-    setIsSyncing(true);
-    setSyncMessage("");
+    setIsSyncing(true)
+    setSyncMessage('')
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      setSyncMessage("Sync completed successfully");
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+      setSyncMessage('Sync completed successfully')
     } catch (err) {
-      setSyncMessage("Sync failed. Please try again.");
+      setSyncMessage('Sync failed. Please try again.')
     } finally {
-      setIsSyncing(false);
+      setIsSyncing(false)
     }
   }
 
   async function handleUnlink() {
-    await tp();
-    setStats({ ...stats, linked: false });
+    await tp()
+    setStats({ ...stats, linked: false })
+  }
+
+  async function handleSignOut() {
+    logout()
+    await tp()
+    navigate('/login')
   }
 
   return (
@@ -77,7 +83,7 @@ export default function Settings({ onLogout }: SettingsProps) {
                 />
                 <button
                   onClick={handleSaveName}
-                  className="px-4 py-2.5 rounded-md bg-primary text-on-primary font-semibold hover:opacity-90 transition-opacity"
+                  className="px-4 py-2.5 rounded-md bg-primary text-white font-semibold hover:opacity-90 transition-opacity"
                 >
                   Save
                 </button>
@@ -96,17 +102,17 @@ export default function Settings({ onLogout }: SettingsProps) {
               <div>
                 <p className="font-medium text-sm">Connection Status</p>
                 <p className="text-xs text-on-surface-variant">
-                  {stats.linked ? "Connected to Supabase" : "Not linked — offline only"}
+                  {stats.linked ? 'Connected to Supabase' : 'Not linked - offline only'}
                 </p>
               </div>
               <span
                 className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
                   stats.linked
-                    ? "bg-secondary/10 text-secondary"
-                    : "bg-outline-variant text-on-surface-variant"
+                    ? 'bg-secondary/10 text-secondary'
+                    : 'bg-outline-variant text-on-surface-variant'
                 }`}
               >
-                {stats.linked ? "Linked" : "Offline"}
+                {stats.linked ? 'Linked' : 'Offline'}
               </span>
             </div>
 
@@ -137,7 +143,7 @@ export default function Settings({ onLogout }: SettingsProps) {
                   <button
                     onClick={handleSync}
                     disabled={isSyncing}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md bg-primary text-on-primary font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md bg-primary text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
                   >
                     {isSyncing ? (
                       <>
@@ -164,7 +170,7 @@ export default function Settings({ onLogout }: SettingsProps) {
                 {syncMessage && (
                   <p
                     className={`text-sm ${
-                      syncMessage.includes("failed") ? "text-error" : "text-secondary"
+                      syncMessage.includes('failed') ? 'text-error' : 'text-secondary'
                     }`}
                   >
                     {syncMessage}
@@ -175,13 +181,13 @@ export default function Settings({ onLogout }: SettingsProps) {
 
             {!stats.linked && (
               <div className="pt-2">
-                <a
-                  href="#/onboarding"
+                <Link
+                  to="/onboarding"
                   className="flex items-center justify-center gap-2 py-2.5 rounded-md border border-outline-variant text-on-surface font-medium hover:bg-outline-variant/30 transition-colors"
                 >
                   <span className="material-symbols-outlined text-xl">link</span>
                   Link your account
-                </a>
+                </Link>
               </div>
             )}
           </div>
@@ -195,23 +201,23 @@ export default function Settings({ onLogout }: SettingsProps) {
           <div className="space-y-3">
             <button
               onClick={async () => {
-                if (confirm("Export all data as JSON?")) {
+                if (confirm('Export all data as JSON?')) {
                   const data = {
-                    products: await Fe("SELECT * FROM products"),
-                    batches: await Fe("SELECT * FROM batches"),
-                    sales: await Fe("SELECT * FROM sales"),
-                    operators: await Fe("SELECT * FROM operators"),
-                    settings: await Fe("SELECT * FROM app_settings"),
-                  };
+                    products: await Fe('SELECT * FROM products'),
+                    batches: await Fe('SELECT * FROM batches'),
+                    sales: await Fe('SELECT * FROM sales'),
+                    operators: await Fe('SELECT * FROM operators'),
+                    settings: await Fe('SELECT * FROM app_settings'),
+                  }
                   const blob = new Blob([JSON.stringify(data, null, 2)], {
-                    type: "application/json",
-                  });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `cervos-export-${new Date().toISOString().slice(0, 10)}.json`;
-                  a.click();
-                  URL.revokeObjectURL(url);
+                    type: 'application/json',
+                  })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = `cervos-export-${new Date().toISOString().slice(0, 10)}.json`
+                  a.click()
+                  URL.revokeObjectURL(url)
                 }
               }}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-outline-variant hover:bg-outline-variant/30 transition-colors"
@@ -226,11 +232,11 @@ export default function Settings({ onLogout }: SettingsProps) {
               onClick={() => {
                 if (
                   confirm(
-                    "This will clear all local data. This action cannot be undone. Continue?"
+                    'This will clear all local data. This action cannot be undone. Continue?'
                   )
                 ) {
-                  localStorage.clear();
-                  window.location.reload();
+                  localStorage.clear()
+                  window.location.reload()
                 }
               }}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-error text-error hover:bg-error/10 transition-colors"
@@ -247,10 +253,7 @@ export default function Settings({ onLogout }: SettingsProps) {
           </h2>
 
           <button
-            onClick={async () => {
-              await tp();
-              onLogout();
-            }}
+            onClick={handleSignOut}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-error text-error hover:bg-error/10 transition-colors"
           >
             <span className="material-symbols-outlined text-xl">logout</span>
@@ -264,5 +267,5 @@ export default function Settings({ onLogout }: SettingsProps) {
         </div>
       </div>
     </div>
-  );
+  )
 }

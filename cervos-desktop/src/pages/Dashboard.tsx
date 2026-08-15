@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { Fe } from "../lib/database";
+import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
+import { Fe } from '../lib/database'
 import {
   LineChart,
   Line,
@@ -8,108 +9,102 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-} from "recharts";
-
-function formatCurrency(currency: string, amount: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency || "USD",
-  }).format(amount);
-}
+} from 'recharts'
 
 interface DashboardData {
-  currency: string;
-  todayRevenue: number;
-  todaySales: number;
-  pendingSync: number;
-  lowStock: number;
-  expiringSoon: number;
-  chartData: { label: string; value: number }[];
+  currency: string
+  todayRevenue: number
+  todaySales: number
+  pendingSync: number
+  lowStock: number
+  expiringSoon: number
+  chartData: { label: string; value: number }[]
 }
 
-const LOW_STOCK_THRESHOLD = 10;
-const EXPIRY_DAYS_THRESHOLD = 30;
+const LOW_STOCK_THRESHOLD = 10
+const EXPIRY_DAYS_THRESHOLD = 30
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData>({
-    currency: "USD",
+    currency: 'USD',
     todayRevenue: 0,
     todaySales: 0,
     pendingSync: 0,
     lowStock: 0,
     expiringSoon: 0,
     chartData: [],
-  });
-  const [isLoading, setIsLoading] = useState(true);
+  })
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const loadData = async () => {
-      const today = new Date().toISOString().slice(0, 10);
-      const sales = await Fe(
-        `SELECT s.*, br.currency FROM sales s
-         LEFT JOIN branches br ON br.id = s.branch_id
-         ORDER BY s.created_at DESC LIMIT 50`
-      );
-      const batches = await Fe("SELECT * FROM batches");
+    loadData()
+  }, [])
 
-      const todaySales = sales.filter(
-        (s: any) => s.created_at?.slice(0, 10) === today
-      );
-      const todayRevenue = todaySales.reduce(
-        (sum: number, s: any) => sum + (s.total || 0),
-        0
-      );
-      const pendingSync = sales.filter((s: any) => !s.synced).length;
+  async function loadData() {
+    const today = new Date().toISOString().slice(0, 10)
+    const sales = await Fe(
+      `SELECT s.*, br.currency FROM sales s
+       LEFT JOIN branches br ON br.id = s.branch_id
+       ORDER BY s.created_at DESC LIMIT 50`
+    )
+    const batches = await Fe('SELECT * FROM batches')
 
-      const stockMap = new Map<string, number>();
-      for (const batch of batches) {
-        const current = stockMap.get(batch.product_id) || 0;
-        stockMap.set(batch.product_id, current + (batch.quantity || 0));
+    const todaySales = sales.filter(
+      (s: any) => s.created_at?.slice(0, 10) === today
+    )
+    const todayRevenue = todaySales.reduce(
+      (sum: number, s: any) => sum + (s.total || 0),
+      0
+    )
+    const pendingSync = sales.filter((s: any) => !s.synced).length
+
+    const stockMap = new Map<string, number>()
+    for (const batch of batches) {
+      const current = stockMap.get(batch.product_id) || 0
+      stockMap.set(batch.product_id, current + (batch.quantity || 0))
+    }
+
+    const lowStockCount = Array.from(stockMap.values()).filter(
+      (q) => q <= LOW_STOCK_THRESHOLD
+    ).length
+
+    const expiryDate = new Date()
+    expiryDate.setDate(expiryDate.getDate() + EXPIRY_DAYS_THRESHOLD)
+    const expiringSoonCount = batches.filter((b: any) => {
+      if (!b.expiry_date || b.quantity <= 0) return false
+      return new Date(b.expiry_date) <= expiryDate
+    }).length
+
+    const last7Days: Map<string, number> = new Map()
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date()
+      date.setDate(date.getDate() - i)
+      const key = date.toISOString().slice(0, 10)
+      last7Days.set(key, 0)
+    }
+    for (const sale of sales) {
+      const date = sale.created_at?.slice(0, 10)
+      if (date && last7Days.has(date)) {
+        last7Days.set(date, (last7Days.get(date) || 0) + (sale.total || 0))
       }
+    }
 
-      const lowStockCount = Array.from(stockMap.values()).filter(
-        (q) => q <= LOW_STOCK_THRESHOLD
-      ).length;
+    const chartData = Array.from(last7Days.entries()).map(([date, value]) => ({
+      label: date.slice(5),
+      value,
+    }))
 
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + EXPIRY_DAYS_THRESHOLD);
-      const expiringSoonCount = batches.filter((b: any) => {
-        if (!b.expiry_date || b.quantity <= 0) return false;
-        return new Date(b.expiry_date) <= expiryDate;
-      }).length;
-
-      const last7Days: Map<string, number> = new Map();
-      for (let i = 6; i >= 0; i--) {
-        const date = new Date();
-        date.setDate(date.getDate() - i);
-        const key = date.toISOString().slice(0, 10);
-        last7Days.set(key, 0);
-      }
-      for (const sale of sales) {
-        const date = sale.created_at?.slice(0, 10);
-        if (date && last7Days.has(date)) {
-          last7Days.set(date, (last7Days.get(date) || 0) + (sale.total || 0));
-        }
-      }
-
-      const chartData = Array.from(last7Days.entries()).map(([date, value]) => ({
-        label: date.slice(5),
-        value,
-      }));
-
-      setData({
-        currency: "USD",
-        todayRevenue,
-        todaySales: todaySales.length,
-        pendingSync,
-        lowStock: lowStockCount,
-        expiringSoon: expiringSoonCount,
-        chartData,
-      });
-      setIsLoading(false);
-    };
-    loadData();
-  }, []);
+    setData({
+      currency: 'USD',
+      todayRevenue,
+      todaySales: todaySales.length,
+      pendingSync,
+      lowStock: lowStockCount,
+      expiringSoon: expiringSoonCount,
+      chartData,
+    })
+    setIsLoading(false)
+  }
 
   if (isLoading) {
     return (
@@ -118,34 +113,34 @@ export default function Dashboard() {
           progress_activity
         </span>
       </div>
-    );
+    )
   }
 
   const stats = [
     {
       label: "Today's revenue",
-      value: formatCurrency(data.currency, data.todayRevenue),
+      value: `$${data.todayRevenue.toFixed(2)}`,
       sub: `${data.todaySales} sales`,
     },
     {
-      label: "Pending sync",
+      label: 'Pending sync',
       value: String(data.pendingSync),
-      sub: "offline changes",
+      sub: 'offline changes',
       alert: data.pendingSync > 0,
     },
     {
-      label: "Low stock",
+      label: 'Low stock',
       value: String(data.lowStock),
-      sub: `≤ ${LOW_STOCK_THRESHOLD} units`,
+      sub: `< ${LOW_STOCK_THRESHOLD} units`,
       alert: data.lowStock > 0,
     },
     {
-      label: "Expiring soon",
+      label: 'Expiring soon',
       value: String(data.expiringSoon),
-      sub: `≤ ${EXPIRY_DAYS_THRESHOLD} days`,
+      sub: `< ${EXPIRY_DAYS_THRESHOLD} days`,
       alert: data.expiringSoon > 0,
     },
-  ];
+  ]
 
   return (
     <div className="p-6 flex flex-col gap-4">
@@ -159,8 +154,8 @@ export default function Dashboard() {
               {stat.label}
             </p>
             <p
-              className={`font-headline text-2xl font-black mt-1 tabular ${
-                stat.alert ? "text-error" : "text-on-surface"
+              className={`font-headline text-2xl font-black mt-1 ${
+                stat.alert ? 'text-error' : 'text-on-surface'
               }`}
             >
               {stat.value}
@@ -173,7 +168,7 @@ export default function Dashboard() {
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 bg-surface-base border border-outline-variant rounded-xl p-5">
           <h3 className="font-headline font-bold text-on-surface mb-4">
-            Revenue — last 7 days
+            Revenue - last 7 days
           </h3>
           <div style={{ height: 180 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -183,8 +178,8 @@ export default function Dashboard() {
                 <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip
                   formatter={(value: number) => [
-                    formatCurrency(data.currency, value),
-                    "Revenue",
+                    `$${value.toFixed(2)}`,
+                    'Revenue',
                   ]}
                 />
                 <Line
@@ -204,36 +199,36 @@ export default function Dashboard() {
             Quick actions
           </h3>
           <div className="space-y-2">
-            <a
-              href="#/pos"
+            <Link
+              to="/pos"
               className="flex items-center gap-3 p-3 rounded-lg border border-outline-variant hover:bg-outline-variant/30 transition-colors"
             >
               <span className="material-symbols-outlined text-primary">
                 point_of_sale
               </span>
               <span className="text-sm font-medium">Open POS Terminal</span>
-            </a>
-            <a
-              href="#/inventory"
+            </Link>
+            <Link
+              to="/inventory"
               className="flex items-center gap-3 p-3 rounded-lg border border-outline-variant hover:bg-outline-variant/30 transition-colors"
             >
               <span className="material-symbols-outlined text-primary">
                 inventory_2
               </span>
               <span className="text-sm font-medium">Manage Inventory</span>
-            </a>
-            <a
-              href="#/settings"
+            </Link>
+            <Link
+              to="/settings"
               className="flex items-center gap-3 p-3 rounded-lg border border-outline-variant hover:bg-outline-variant/30 transition-colors"
             >
               <span className="material-symbols-outlined text-primary">
                 settings
               </span>
               <span className="text-sm font-medium">Settings</span>
-            </a>
+            </Link>
           </div>
         </div>
       </div>
     </div>
-  );
+  )
 }

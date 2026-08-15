@@ -1,41 +1,41 @@
-let db: any = null;
-let SQL: any = null;
+let db: any = null
+let SQL: any = null
 
-const DB_KEY = "cervos_db";
+const DB_KEY = 'cervos_db'
 
 export async function initDb(): Promise<void> {
-  if (db) return;
-  const initSqlJs = (await import("sql.js")).default;
-  SQL = await initSqlJs();
+  if (db) return
+  const initSqlJs = (await import('sql.js')).default
+  SQL = await initSqlJs()
 
-  const savedDb = localStorage.getItem(DB_KEY);
+  const savedDb = localStorage.getItem(DB_KEY)
   if (savedDb) {
-    const data = Uint8Array.from(atob(savedDb), (c) => c.charCodeAt(0));
-    db = new SQL.Database(data);
+    const data = Uint8Array.from(atob(savedDb), (c) => c.charCodeAt(0))
+    db = new SQL.Database(data)
   } else {
-    db = new SQL.Database();
+    db = new SQL.Database()
   }
 
-  await runMigrations();
-  saveDb();
+  await runMigrations()
+  saveDb()
 }
 
 function saveDb(): void {
-  if (!db) return;
-  const data = db.export();
-  const binary = String.fromCharCode(...data);
-  localStorage.setItem(DB_KEY, btoa(binary));
+  if (!db) return
+  const data = db.export()
+  const binary = String.fromCharCode(...data)
+  localStorage.setItem(DB_KEY, btoa(binary))
 }
 
 async function runMigrations(): Promise<void> {
-  if (!db) return;
+  if (!db) return
 
   db.run(`
     CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY,
       value TEXT
     )
-  `);
+  `)
 
   db.run(`
     CREATE TABLE IF NOT EXISTS branches (
@@ -45,13 +45,14 @@ async function runMigrations(): Promise<void> {
       lat REAL,
       lng REAL,
       subscription_status TEXT DEFAULT 'trial',
+      subscription_tier TEXT DEFAULT 'free',
       trial_ends_at TEXT,
       payment_due_at TEXT,
       grace_ends_at TEXT,
       last_synced_at TEXT,
       updated_at TEXT
     )
-  `);
+  `)
 
   db.run(`
     CREATE TABLE IF NOT EXISTS products (
@@ -63,7 +64,7 @@ async function runMigrations(): Promise<void> {
       barcode TEXT,
       updated_at TEXT
     )
-  `);
+  `)
 
   db.run(`
     CREATE TABLE IF NOT EXISTS batches (
@@ -77,7 +78,7 @@ async function runMigrations(): Promise<void> {
       sync_version INTEGER DEFAULT 1,
       FOREIGN KEY (product_id) REFERENCES products(id)
     )
-  `);
+  `)
 
   db.run(`
     CREATE TABLE IF NOT EXISTS operators (
@@ -88,7 +89,7 @@ async function runMigrations(): Promise<void> {
       role TEXT DEFAULT 'operator',
       created_at TEXT
     )
-  `);
+  `)
 
   db.run(`
     CREATE TABLE IF NOT EXISTS sales (
@@ -106,7 +107,7 @@ async function runMigrations(): Promise<void> {
       synced INTEGER DEFAULT 0,
       sync_error TEXT
     )
-  `);
+  `)
 
   db.run(`
     CREATE TABLE IF NOT EXISTS sale_items (
@@ -118,7 +119,7 @@ async function runMigrations(): Promise<void> {
       FOREIGN KEY (sale_id) REFERENCES sales(id),
       FOREIGN KEY (batch_id) REFERENCES batches(id)
     )
-  `);
+  `)
 
   db.run(`
     CREATE TABLE IF NOT EXISTS receipts (
@@ -128,7 +129,7 @@ async function runMigrations(): Promise<void> {
       created_at TEXT,
       FOREIGN KEY (sale_id) REFERENCES sales(id)
     )
-  `);
+  `)
 
   db.run(`
     CREATE TABLE IF NOT EXISTS shifts (
@@ -141,7 +142,7 @@ async function runMigrations(): Promise<void> {
       counted_cash REAL,
       synced INTEGER DEFAULT 0
     )
-  `);
+  `)
 
   db.run(`
     CREATE TABLE IF NOT EXISTS activity_log (
@@ -156,7 +157,7 @@ async function runMigrations(): Promise<void> {
       created_at TEXT,
       synced INTEGER DEFAULT 0
     )
-  `);
+  `)
 
   db.run(`
     CREATE TABLE IF NOT EXISTS sync_queue (
@@ -168,7 +169,7 @@ async function runMigrations(): Promise<void> {
       created_at TEXT,
       attempts INTEGER DEFAULT 0
     )
-  `);
+  `)
 
   db.run(`
     CREATE TABLE IF NOT EXISTS notifications (
@@ -182,31 +183,45 @@ async function runMigrations(): Promise<void> {
       read INTEGER DEFAULT 0,
       created_at TEXT
     )
-  `);
+  `)
+
+  const operatorCheck = db.exec('SELECT COUNT(*) as count FROM operators')
+  const operatorCount = operatorCheck.length > 0 && operatorCheck[0].values.length > 0 ? operatorCheck[0].values[0][0] : 0
+  if (operatorCount === 0) {
+    const branchCheck = db.exec("SELECT COUNT(*) as count FROM app_settings WHERE key = 'branch_id'")
+    const hasBranch = branchCheck.length > 0 && branchCheck[0].values.length > 0 && branchCheck[0].values[0][0] > 0
+    if (!hasBranch) {
+      const defaultId = crypto.randomUUID()
+      db.run(
+        `INSERT INTO app_settings (key, value) VALUES ('branch_id', ?)`,
+        [JSON.stringify(defaultId)]
+      )
+    }
+  }
 }
 
 export async function Fe(sql: string, params: any[] = []): Promise<any[]> {
-  if (!db) await initDb();
-  const stmt = db.prepare(sql);
-  if (params.length > 0) stmt.bind(params);
-  const results: any[] = [];
+  if (!db) await initDb()
+  const stmt = db.prepare(sql)
+  if (params.length > 0) stmt.bind(params)
+  const results: any[] = []
   while (stmt.step()) {
-    results.push(stmt.getAsObject());
+    results.push(stmt.getAsObject())
   }
-  stmt.free();
-  return results;
+  stmt.free()
+  return results
 }
 
 export async function Pe(sql: string, params: any[] = []): Promise<void> {
-  if (!db) await initDb();
-  db.run(sql, params);
-  saveDb();
+  if (!db) await initDb()
+  db.run(sql, params)
+  saveDb()
 }
 
 export function Et(): string {
-  return crypto.randomUUID();
+  return crypto.randomUUID()
 }
 
 export function Mt(): string {
-  return new Date().toISOString();
+  return new Date().toISOString()
 }

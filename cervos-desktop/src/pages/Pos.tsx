@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Fe, Pe, Et, Mt } from "../lib/database";
 import { qs } from "../lib/sync";
+import { useAuthStore } from "../lib/store";
 import type { Product, Batch } from "../types";
 
 interface CartItem {
@@ -10,14 +11,10 @@ interface CartItem {
   unit_price: number;
 }
 
-interface PosProps {
-  activeOperator: any;
-  onSaleComplete: () => void;
-}
-
 const PAYMENT_METHODS = ["cash", "card", "mobile_money", "insurance"];
 
-export default function Pos({ activeOperator, onSaleComplete }: PosProps) {
+export default function Pos() {
+  const { currentOperator } = useAuthStore()
   const [products, setProducts] = useState<Product[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -145,7 +142,7 @@ export default function Pos({ activeOperator, onSaleComplete }: PosProps) {
         [
           saleId,
           null,
-          activeOperator?.id || null,
+          currentOperator?.id || null,
           total,
           parseFloat(discount || "0"),
           getTax(),
@@ -178,7 +175,7 @@ export default function Pos({ activeOperator, onSaleComplete }: PosProps) {
       await qs("sales", saleId, "insert", {
         id: saleId,
         branch_id: null,
-        operator_id: activeOperator?.id || null,
+        operator_id: currentOperator?.id || null,
         total,
         discount: parseFloat(discount || "0"),
         tax: getTax(),
@@ -191,7 +188,6 @@ export default function Pos({ activeOperator, onSaleComplete }: PosProps) {
       setCart([]);
       setTenderAmount("");
       setDiscount("0");
-      onSaleComplete();
       loadData();
     } catch (err) {
       console.error("Sale processing failed:", err);

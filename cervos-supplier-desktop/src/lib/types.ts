@@ -9,8 +9,18 @@ export interface Supplier {
   country: string
   subscription_status: 'active' | 'inactive' | 'trial' | 'past_due'
   subscription_tier: 'free' | 'starter' | 'professional' | 'enterprise'
+  grace_ends_at: string | null
+  trial_ends_at: string | null
   created_at: string
   updated_at: string
+}
+
+export interface RemoteCommand {
+  id: string
+  type: 'product_update' | 'price_adjustment' | 'order_action' | 'notification' | 'system'
+  payload: Record<string, any>
+  status: 'pending' | 'acknowledged' | 'dismissed'
+  created_at: string
 }
 
 export interface Product {

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/hooks'
-import { fetchAnalytics, fetchOrders, fetchQuotes } from '../lib/queries'
-import { AnalyticsData, Order, Quote } from '../lib/types'
+import { fetchAnalytics, fetchOrders, fetchQuotes, fetchPendingCommands, acknowledgeCommand } from '../lib/queries'
+import { useRemoteCommandsStore } from '../lib/store'
+import { AnalyticsData, Order, Quote, RemoteCommand } from '../lib/types'
 import { formatDistanceToNow } from 'date-fns'
 
 export default function Dashboard() {
@@ -11,6 +12,7 @@ export default function Dashboard() {
   const [recentOrders, setRecentOrders] = useState<Order[]>([])
   const [recentQuotes, setRecentQuotes] = useState<Quote[]>([])
   const [loading, setLoading] = useState(true)
+  const { pendingCommands, setPendingCommands, removeCommand } = useRemoteCommandsStore()
 
   useEffect(() => {
     if (supplier) {
@@ -18,16 +20,55 @@ export default function Dashboard() {
         fetchAnalytics(supplier.id),
         fetchOrders(supplier.id),
         fetchQuotes(supplier.id),
+        fetchPendingCommands(supplier.id),
       ])
-        .then(([analyticsData, ordersData, quotesData]) => {
+        .then(([analyticsData, ordersData, quotesData, commandsData]) => {
           setAnalytics(analyticsData)
           setRecentOrders(ordersData.slice(0, 5))
           setRecentQuotes(quotesData.slice(0, 5))
+          setPendingCommands(commandsData)
         })
         .catch(console.error)
         .finally(() => setLoading(false))
     }
-  }, [supplier])
+  }, [supplier, setPendingCommands])
+
+  const handleAcknowledge = async (commandId: string) => {
+    try {
+      await acknowledgeCommand(commandId)
+      removeCommand(commandId)
+    } catch (error) {
+      console.error('Failed to acknowledge command:', error)
+    }
+  }
+
+  const getCommandIcon = (type: RemoteCommand['type']) => {
+    const icons: Record<RemoteCommand['type'], string> = {
+      product_update: 'inventory_2',
+      price_adjustment: 'attach_money',
+      order_action: 'shopping_cart',
+      notification: 'notifications',
+      system: 'settings',
+    }
+    return icons[type] || 'info'
+  }
+
+  const getCommandMessage = (command: RemoteCommand) => {
+    switch (command.type) {
+      case 'product_update':
+        return `Product update: ${command.payload.product_name || 'Unknown product'}`
+      case 'price_adjustment':
+        return `Price adjustment request for ${command.payload.product_name || 'product'}`
+      case 'order_action':
+        return `Order action required: ${command.payload.action || 'View details'}`
+      case 'notification':
+        return command.payload.message || 'New notification'
+      case 'system':
+        return command.payload.message || 'System update'
+      default:
+        return 'You have a pending command'
+    }
+  }
 
   if (loading) {
     return (
@@ -70,6 +111,41 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {pendingCommands.length > 0 && (
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="material-symbols-outlined text-yellow-400">pending_actions</span>
+            <h3 className="text-yellow-400 font-semibold">Pending Commands</h3>
+          </div>
+          <div className="space-y-2">
+            {pendingCommands.slice(0, 3).map((command) => (
+              <div
+                key={command.id}
+                className="flex items-center justify-between p-3 bg-surface rounded-lg"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="material-symbols-outlined text-gray-400">
+                    {getCommandIcon(command.type)}
+                  </span>
+                  <div>
+                    <p className="text-white text-sm">{getCommandMessage(command)}</p>
+                    <p className="text-gray-500 text-xs">
+                      {formatDistanceToNow(new Date(command.created_at), { addSuffix: true })}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleAcknowledge(command.id)}
+                  className="px-3 py-1 text-xs bg-yellow-500/20 text-yellow-400 rounded hover:bg-yellow-500/30 transition-colors"
+                >
+                  Acknowledge
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-display font-bold text-white">

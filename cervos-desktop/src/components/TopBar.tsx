@@ -1,68 +1,69 @@
-import { useState, useEffect } from "react";
-import { np } from "../lib/sync";
-import type { DashboardStats } from "../types";
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuthStore } from '../lib/store'
+import { Fe } from '../lib/database'
 
-interface TopBarProps {
-  isAdmin: boolean;
-  activeOperator: any;
-  onLock: () => void;
-}
-
-export default function TopBar({
-  activeOperator,
-  onLock,
-}: TopBarProps) {
-  const [stats, setStats] = useState<DashboardStats>({
-    linked: false,
-    pendingCount: 0,
-    lastSyncedAt: null,
-    isSyncing: false,
-  });
-  const [showNotifications, setShowNotifications] = useState(false);
+export default function TopBar() {
+  const navigate = useNavigate()
+  const { currentOperator, logout } = useAuthStore()
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string>('trial')
 
   useEffect(() => {
-    const fetchStats = async () => {
-      const s = await np();
-      setStats(s);
-    };
-    fetchStats();
-    const interval = setInterval(fetchStats, 15000);
-    return () => clearInterval(interval);
-  }, []);
+    async function loadSubscription() {
+      const result = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
+      if (result.length > 0) {
+        const bid = JSON.parse(result[0].value)
+        const branchResult = await Fe('SELECT subscription_status FROM branches WHERE id = ?', [bid])
+        if (branchResult.length > 0) {
+          setSubscriptionStatus(branchResult[0].subscription_status || 'trial')
+        }
+      }
+    }
+    loadSubscription()
+    const interval = setInterval(loadSubscription, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  function getStatusColor(status: string): string {
+    switch (status) {
+      case 'active': return 'bg-secondary'
+      case 'trial': return 'bg-primary animate-pulse'
+      case 'past_due': return 'bg-warning'
+      case 'inactive': return 'bg-error'
+      default: return 'bg-outline-variant'
+    }
+  }
+
+  function getStatusLabel(status: string): string {
+    switch (status) {
+      case 'active': return 'Active'
+      case 'trial': return 'Trial'
+      case 'past_due': return 'Past Due'
+      case 'inactive': return 'Inactive'
+      default: return status
+    }
+  }
+
+  async function handleLock() {
+    logout()
+    navigate('/login')
+  }
 
   return (
-    <header className="h-14 bg-surface-base border-b border-outline-variant/60 flex items-center justify-between px-6 shrink-0 relative">
+    <header className="h-14 bg-surface-base border-b border-outline-variant/60 flex items-center justify-between px-6 shrink-0">
       <div className="text-sm text-on-surface-variant">
-        Welcome back —{" "}
         <span className="font-semibold text-on-surface">Cervos POS</span>
       </div>
 
-      <div className="flex items-center gap-3">
-        <span className="flex items-center gap-2 text-xs text-on-surface-variant">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              stats.linked ? "bg-secondary animate-pulse" : "bg-error"
-            }`}
-          />
-          {stats.linked ? "Linked" : "Offline"}
-        </span>
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${getStatusColor(subscriptionStatus)}`} />
+          <span className="text-xs text-on-surface-variant">{getStatusLabel(subscriptionStatus)}</span>
+        </div>
 
-        {stats.pendingCount > 0 && (
-          <span className="flex items-center gap-1 text-xs text-on-surface-variant">
-            <span className="w-2 h-2 rounded-full bg-amber-500" />
-            {stats.pendingCount} pending
-          </span>
-        )}
-
-        {stats.lastSyncedAt && (
-          <span className="text-xs text-on-surface-variant">
-            Last sync: {new Date(stats.lastSyncedAt).toLocaleTimeString()}
-          </span>
-        )}
-
-        {activeOperator && (
+        {currentOperator && (
           <button
-            onClick={onLock}
+            onClick={handleLock}
             title="Lock the terminal"
             className="p-2 rounded-lg hover:bg-outline-variant/50 transition-colors"
           >
@@ -71,16 +72,7 @@ export default function TopBar({
             </span>
           </button>
         )}
-
-        <button
-          onClick={() => setShowNotifications(!showNotifications)}
-          className="p-2 rounded-lg hover:bg-outline-variant/50 transition-colors relative"
-        >
-          <span className="material-symbols-outlined text-xl text-on-surface-variant">
-            notifications
-          </span>
-        </button>
       </div>
     </header>
-  );
+  )
 }
