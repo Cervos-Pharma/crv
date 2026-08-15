@@ -30,6 +30,7 @@ export default function HQOverviewInner() {
               { label: "Downloads",      href: "/hq/downloads",    icon: "download",      desc: "Manage desktop app releases for all platforms." },
               { label: "Support",        href: "/hq/support",      icon: "support_agent", desc: "Review and respond to support tickets from users." },
               { label: "HQ Team",        href: "/hq/team",         icon: "badge",         desc: "Manage HQ console operators and access." },
+              { label: "News",           href: "/hq/news",          icon: "newspaper",     desc: "Publish and manage news articles for users and the public." },
             ].map((c) => (
               <Link
                 key={c.label}

@@ -30,6 +30,7 @@ const NAV = [
   { label: "Downloads",      href: "/hq/downloads",      icon: "download" },
   { label: "Support",        href: "/hq/support",        icon: "support_agent" },
   { label: "HQ Team",        href: "/hq/team",           icon: "badge" },
+  { label: "News",          href: "/hq/news",           icon: "newspaper" },
 ];
 
 export default function HQSidebar({ openSupportCount = 0 }: HQSidebarProps) {

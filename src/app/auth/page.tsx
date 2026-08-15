@@ -147,7 +147,8 @@ function AuthForm() {
             invite_token: inviteData?.token || null,
           },
           emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
+          email_confirm: true,
+        } as any,
       });
       if (error) { setToast({ message: error.message, type: "error" }); return; }
       if (data.user && !data.session) { setConfirmEmail(suEmail); return; }

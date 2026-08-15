@@ -79,11 +79,10 @@ function hashHQPassword(password) {
 }
 
 async function createAuthUser(email, password, metadata) {
-  // Try to get existing user first
   const { data: existing } = await supabase.auth.admin.listUsers();
   const existingUser = existing?.users.find((u) => u.email === email);
   if (existingUser) {
-    console.log(`  User ${email} already exists, skipping create`);
+    console.log(`  User ${email} already exists, skipping`);
     return existingUser;
   }
 
@@ -92,9 +91,9 @@ async function createAuthUser(email, password, metadata) {
     password,
     email_confirm: true,
     user_metadata: metadata,
-  });
+  } as any);
   if (error) {
-    console.error("Auth user creation error:", error);
+    console.error("Auth user creation error:", error.message);
     throw error;
   }
   return data.user;

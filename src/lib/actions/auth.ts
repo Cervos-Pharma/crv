@@ -78,7 +78,8 @@ export async function signUp(opts: {
         entity_name: opts.entityName,
         invite_token: opts.inviteToken ?? null,
       },
-    },
+      email_confirm: true,
+    } as any,
   });
 
   if (error) return { error: error.message };
