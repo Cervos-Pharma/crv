@@ -91,7 +91,7 @@ async function createAuthUser(email, password, metadata) {
     password,
     email_confirm: true,
     user_metadata: metadata,
-  } as any);
+  });
   if (error) {
     console.error("Auth user creation error:", error.message);
     throw error;
