@@ -35,8 +35,8 @@ interface GlobeInstance {
   pointRadius(n: number): GlobeInstance;
   pointLabel(fn: (p: BranchPoint) => string): GlobeInstance;
   onGlobeReady(fn: () => void): GlobeInstance;
-  onError(fn: (err: string) => void): GlobeInstance;
   autoRotate(n: number): GlobeInstance;
+  controls(): { autoRotate: boolean; autoRotateSpeed: number };
   destroy(): void;
 }
 
