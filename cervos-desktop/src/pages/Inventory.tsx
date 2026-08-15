@@ -43,13 +43,15 @@ function BarcodeScanner({ onScan, onClose }: { onScan: (barcode: string) => void
       ctx.drawImage(video, 0, 0);
 
       try {
-        const barcodeDetector = new window.BarcodeDetector({ formats: ["code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e", "qr_code"] });
-        barcodeDetector.detect(canvas).then((barcodes) => {
-          if (barcodes.length > 0) {
-            onScan(barcodes[0].rawValue);
-            return;
-          }
-        }).catch(() => {});
+        if (window.BarcodeDetector) {
+          const barcodeDetector = new window.BarcodeDetector({ formats: ["code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e", "qr_code"] });
+          barcodeDetector.detect(canvas).then((barcodes) => {
+            if (barcodes.length > 0) {
+              onScan(barcodes[0].rawValue);
+              return;
+            }
+          }).catch(() => {});
+        }
       } catch {
       }
 

@@ -43,13 +43,15 @@ function BarcodeScanner({ onScan, onClose }: { onScan: (barcode: string) => void
       ctx.drawImage(video, 0, 0);
 
       try {
-        const barcodeDetector = new window.BarcodeDetector({ formats: ["code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e", "qr_code"] });
-        barcodeDetector.detect(canvas).then((barcodes) => {
-          if (barcodes.length > 0) {
-            onScan(barcodes[0].rawValue);
-            return;
-          }
-        }).catch(() => {});
+        if (window.BarcodeDetector) {
+          const barcodeDetector = new window.BarcodeDetector({ formats: ["code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e", "qr_code"] });
+          barcodeDetector.detect(canvas).then((barcodes) => {
+            if (barcodes.length > 0) {
+              onScan(barcodes[0].rawValue);
+              return;
+            }
+          }).catch(() => {});
+        }
       } catch {
       }
 
@@ -321,20 +323,34 @@ export default function Pos() {
   }
 
   return (
-    <div className="flex h-full">
-      <div className="flex-1 flex flex-col p-6">
+    <>
+      {showScanner && (
+        <BarcodeScanner onScan={handleBarcodeScanned} onClose={() => setShowScanner(false)} />
+      )}
+      <div className="flex h-full">
+        <div className="flex-1 flex flex-col p-6">
         <div className="flex gap-4 mb-4">
           <div className="flex-1">
-            <input
-              ref={barcodeInputRef}
-              type="text"
-              value={barcode}
-              onChange={(e) => setBarcode(e.target.value)}
-              onKeyDown={handleBarcodeScan}
-              placeholder="Scan barcode or type manually..."
-              className="w-full px-4 py-3 rounded-lg border border-outline-variant bg-surface-base text-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-              autoFocus
-            />
+            <div className="flex gap-2">
+              <input
+                ref={barcodeInputRef}
+                type="text"
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
+                onKeyDown={handleBarcodeScan}
+                placeholder="Scan barcode or type manually..."
+                className="flex-1 px-4 py-3 rounded-lg border border-outline-variant bg-surface-base text-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                autoFocus
+              />
+              <button
+                onClick={() => setShowScanner(true)}
+                className="px-4 py-3 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                title="Scan barcode"
+                type="button"
+              >
+                <span className="material-symbols-outlined">qr_code_scanner</span>
+              </button>
+            </div>
           </div>
           <div className="w-64">
             <input
@@ -523,5 +539,6 @@ export default function Pos() {
         </div>
       </div>
     </div>
+    </>
   );
 }
