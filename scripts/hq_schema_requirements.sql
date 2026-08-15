@@ -141,6 +141,42 @@ ALTER TABLE news_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE news_posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_releases ENABLE ROW LEVEL SECURITY;
 
+-- user_profiles: service role only
+DROP POLICY IF EXISTS "Service role full access user_profiles" ON user_profiles;
+CREATE POLICY "Service role full access user_profiles" ON user_profiles FOR ALL USING (true) WITH CHECK (true);
+
+-- subscription_plans: anyone can read
+DROP POLICY IF EXISTS "Anyone can read subscription_plans" ON subscription_plans;
+CREATE POLICY "Anyone can read subscription_plans" ON subscription_plans FOR SELECT USING (true);
+
+-- billing_payments: service role only
+DROP POLICY IF EXISTS "Service role full access billing_payments" ON billing_payments;
+CREATE POLICY "Service role full access billing_payments" ON billing_payments FOR ALL USING (true) WITH CHECK (true);
+
+-- supplier_invites: service role only
+DROP POLICY IF EXISTS "Service role full access supplier_invites" ON supplier_invites;
+CREATE POLICY "Service role full access supplier_invites" ON supplier_invites FOR ALL USING (true) WITH CHECK (true);
+
+-- supplier_quote_answers: service role only
+DROP POLICY IF EXISTS "Service role full access supplier_quote_answers" ON supplier_quote_answers;
+CREATE POLICY "Service role full access supplier_quote_answers" ON supplier_quote_answers FOR ALL USING (true) WITH CHECK (true);
+
+-- news_categories: anyone can read
+DROP POLICY IF EXISTS "Anyone can read news_categories" ON news_categories;
+CREATE POLICY "Anyone can read news_categories" ON news_categories FOR SELECT USING (true);
+
+-- news_posts: anyone can view published; service role manages all
+DROP POLICY IF EXISTS "Anyone can view published news_posts" ON news_posts;
+CREATE POLICY "Anyone can view published news_posts" ON news_posts FOR SELECT USING (published = true);
+DROP POLICY IF EXISTS "Service role full access news_posts" ON news_posts;
+CREATE POLICY "Service role full access news_posts" ON news_posts FOR ALL USING (true) WITH CHECK (true);
+
+-- app_releases: anyone can view current releases; service role manages all
+DROP POLICY IF EXISTS "Anyone can view current app_releases" ON app_releases;
+CREATE POLICY "Anyone can view current app_releases" ON app_releases FOR SELECT USING (is_current = true);
+DROP POLICY IF EXISTS "Service role full access app_releases" ON app_releases;
+CREATE POLICY "Service role full access app_releases" ON app_releases FOR ALL USING (true) WITH CHECK (true);
+
 -- ============================================
 -- RPC FUNCTION: set_current_release
 -- ============================================

@@ -194,7 +194,8 @@ export default function HQDownloadsClient({ releases: initialReleases }: HQDownl
     setDeletingId(release.id);
     setConfirmDeleteId(null);
     try {
-      const result = await deleteRelease(release.id, release.file_path);
+      const filePath = release.file_url.replace(/^.*\/storage\/v1\/object\/public\/app-releases\//, "");
+      const result = await deleteRelease(release.id, filePath);
       if (result.error) {
         setToast({ message: result.error, type: "error" });
       } else {
@@ -441,7 +442,7 @@ export default function HQDownloadsClient({ releases: initialReleases }: HQDownl
 
                             {/* Uploaded */}
                             <td className="px-6 py-4 font-body-sm text-body-sm text-on-surface-variant whitespace-nowrap">
-                              {new Date(r.uploaded_at).toLocaleDateString()}
+                              {new Date(r.created_at).toLocaleDateString()}
                             </td>
 
                             {/* Actions */}

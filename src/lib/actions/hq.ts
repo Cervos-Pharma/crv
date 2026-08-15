@@ -254,12 +254,11 @@ export interface AppRelease {
   id: string;
   platform: "windows" | "mac" | "linux";
   version: string;
-  file_path: string;
   file_url: string;
   file_size_bytes: number;
   release_notes: string | null;
   is_current: boolean;
-  uploaded_at: string;
+  created_at: string;
 }
 
 /**
@@ -274,7 +273,7 @@ export async function getAllReleases(): Promise<{ data: AppRelease[] | null; err
   const { data, error } = await supabase
     .from("app_releases")
     .select("*")
-    .order("uploaded_at", { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (error) return { data: null, error: error.message };
   return { data, error: null };
@@ -406,13 +405,10 @@ export async function confirmUpload(
 
   const supabase = await createServiceClient();
 
-  const { data: urlData } = supabase.storage.from("app-releases").getPublicUrl(filePath);
-
   const { error: insertError } = await supabase.from("app_releases").insert({
     platform,
     version: version.trim(),
-    file_path: filePath,
-    file_url: urlData.publicUrl,
+    file_url: filePath,
     file_size_bytes: fileSizeBytes,
     release_notes: releaseNotes?.trim() || null,
     is_current: false,
@@ -2966,6 +2962,7 @@ export async function createNewsPost(input: NewsPostInput): Promise<{ error: str
     category: input.category || "Company",
     tags: Array.isArray(input.tags) ? input.tags.filter((t) => String(t).trim()) : [],
     published: Boolean(input.published),
+    published_at: input.published ? new Date().toISOString() : null,
   });
 
   if (error) return { error: error.message };
@@ -2994,7 +2991,10 @@ export async function updateNewsPost(
   if (input.author_name !== undefined) patch.author_name = input.author_name.trim() || "Cervos Team";
   if (input.category !== undefined) patch.category = input.category;
   if (input.tags !== undefined) patch.tags = Array.isArray(input.tags) ? input.tags.filter((t) => String(t).trim()) : [];
-  if (input.published !== undefined) patch.published = Boolean(input.published);
+  if (input.published !== undefined) {
+    patch.published = Boolean(input.published);
+    if (input.published) patch.published_at = new Date().toISOString();
+  }
 
   if (Object.keys(patch).length === 0) return { error: null };
 
