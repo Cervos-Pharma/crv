@@ -177,7 +177,7 @@ export async function getAllQuoteRequests(): Promise<{
   const { data, error } = await supabase
     .from("quote_requests")
     .select("*")
-    .order("uploaded_at", { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (error) return { data: null, error: error.message };
   return { data, error: null };
@@ -282,7 +282,7 @@ export async function getAllReleases(): Promise<{ data: AppRelease[] | null; err
   const { data, error } = await supabase
     .from("app_releases")
     .select("*")
-    .order("uploaded_at", { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (error) return { data: null, error: error.message };
   return { data, error: null };
@@ -639,7 +639,7 @@ export async function getSupplierInvites(): Promise<{ data: InviteWithQuote[] | 
       quote_requests!left(id, company_name, contact_name, email, phone, branch_name, expected_branches, current_supplier, annual_volume),
       accounts!left(id, name)
     `)
-    .order("uploaded_at", { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (error) return { data: null, error: error.message };
 
@@ -963,7 +963,7 @@ export async function getAllAccounts(): Promise<{
   const { data, error } = await supabase
     .from("accounts")
     .select("id, name, type, billing_status, download_enabled, subscription_status, verified, created_at")
-    .order("uploaded_at", { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (error) return { data: null, error: error.message };
   return {
@@ -2903,7 +2903,7 @@ export async function getBillingAccounts(): Promise<{ data: BillingAccount[] | n
       .from("accounts")
       .select("id, name, type, subscription_status, billing_status, subscription_expires_at, created_at")
       .neq("type", "supplier")
-      .order("uploaded_at", { ascending: false });
+      .order("created_at", { ascending: false });
     accounts = result.data ?? [];
     if (!accounts.length) return { data: [], error: null };
   }
