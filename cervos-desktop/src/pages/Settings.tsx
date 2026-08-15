@@ -133,7 +133,8 @@ export default function Settings() {
 
   async function handleUnlink() {
     await tp()
-    setStats({ ...stats, linked: false })
+    logout()
+    navigate('/login')
   }
 
   async function handleSignOut() {

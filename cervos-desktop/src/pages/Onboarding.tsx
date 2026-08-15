@@ -332,7 +332,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                   required
                   minLength={4}
                   maxLength={8}
-                  className={inputClass + ' text-center text-2xl tracking-widest'}
+                  className="w-full h-12 px-4 bg-white border border-gray-300 rounded-none text-gray-900 text-center text-2xl tracking-widest focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-gray-400"
                 />
 
                 {error && (

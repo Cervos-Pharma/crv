@@ -6,25 +6,39 @@ const DB_KEY = 'cervos_db'
 export async function initDb(): Promise<void> {
   if (db) return
 
-  const initSqlJs = (await import('sql.js')).default
-  SQL = await initSqlJs({
-    locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/sql.js/dist/${file}`
-  })
+  try {
+    const initSqlJs = (await import('sql.js')).default
+    
+    const locateWasm = (file: string) => {
+      const cdnUrl = `https://cdn.jsdelivr.net/npm/sql.js/dist/${file}`
+      return cdnUrl
+    }
+    
+    SQL = await initSqlJs({ locateFile: locateWasm })
 
-  const savedDb = localStorage.getItem(DB_KEY)
-  if (savedDb) {
-    try {
-      const data = Uint8Array.from(atob(savedDb), (c) => c.charCodeAt(0))
-      db = new SQL.Database(data)
-    } catch {
+    const savedDb = localStorage.getItem(DB_KEY)
+    if (savedDb) {
+      try {
+        const data = Uint8Array.from(atob(savedDb), (c) => c.charCodeAt(0))
+        db = new SQL.Database(data)
+      } catch {
+        db = new SQL.Database()
+      }
+    } else {
       db = new SQL.Database()
     }
-  } else {
-    db = new SQL.Database()
-  }
 
-  await runMigrations()
-  saveDb()
+    await runMigrations()
+    saveDb()
+  } catch (err) {
+    console.error('initDb failed:', err)
+    try {
+      db = new SQL.Database()
+      await runMigrations()
+    } catch {
+      console.error('Failed to create database')
+    }
+  }
 }
 
 function saveDb(): void {
@@ -207,16 +221,26 @@ async function runMigrations(): Promise<void> {
   }
 }
 
-export async function Fe(sql: string, params: any[] = []): Promise<any[]> {
-  if (!db) await initDb()
-  const stmt = db.prepare(sql)
-  if (params.length > 0) stmt.bind(params)
-  const results: any[] = []
-  while (stmt.step()) {
-    results.push(stmt.getAsObject())
+export async function Fe(sql: string, params: any[] = [], timeoutMs = 5000): Promise<any[]> {
+  if (!db) {
+    const initPromise = initDb()
+    const timeout = new Promise<void>((_, reject) => setTimeout(() => reject(new Error('initDb timeout')), timeoutMs))
+    await Promise.race([initPromise, timeout])
   }
-  stmt.free()
-  return results
+  if (!db) return []
+  try {
+    const stmt = db.prepare(sql)
+    if (params.length > 0) stmt.bind(params)
+    const results: any[] = []
+    while (stmt.step()) {
+      results.push(stmt.getAsObject())
+    }
+    stmt.free()
+    return results
+  } catch (err) {
+    console.error('Fe error:', err)
+    return []
+  }
 }
 
 export async function Pe(sql: string, params: any[] = []): Promise<void> {

@@ -150,8 +150,8 @@ export default function Login() {
                       onChange={(e) => setPin(e.target.value)}
                       required
                       maxLength={8}
-                      className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-ink-deep placeholder-gray-500 focus:outline-none focus:border-primary"
-                      placeholder="----"
+                      className="w-full px-4 py-3 bg-surface-base border border-outline-variant rounded-lg text-ink-deep placeholder-text-muted focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      placeholder="Enter PIN"
                       autoFocus
                     />
                   </div>
