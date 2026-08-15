@@ -335,7 +335,6 @@ function detectOS(): OS {
 export default function DownloadClient({ releases }: DownloadClientProps) {
   const [os, setOs] = useState<OS>("windows");
   const [toast, setToast] = useState(false);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const { t } = useI18n();
   const osIndex = OS_ORDER.indexOf(os);
   const currentRelease = releases[OS_TO_PLATFORM[os]] ?? null;
@@ -350,15 +349,9 @@ export default function DownloadClient({ releases }: DownloadClientProps) {
 
   useEffect(() => { setOs(detectOS()); }, []);
 
-  const handleDownload = async (releaseId: string) => {
-    setDownloadingId(releaseId);
-    try {
-      const res = await fetch(`/api/downloads/${releaseId}`);
-      const json = await res.json();
-      if (json.url) window.location.href = json.url;
-    } finally {
-      setDownloadingId(null);
-    }
+  const handleDownload = (releaseId: string) => {
+    const release = Object.values(releases).find(r => r.id === releaseId);
+    if (release?.file_url) window.location.href = release.file_url;
   };
 
   // Capture card bounding rect for clip-path start values
@@ -594,11 +587,10 @@ export default function DownloadClient({ releases }: DownloadClientProps) {
                       {hasCurrentRelease ? (
                         <button
                           onClick={() => handleDownload(currentRelease.id)}
-                          disabled={downloadingId === currentRelease.id}
-                          className="btn-shimmer w-full bg-primary text-on-primary py-4 px-6 rounded-xl flex justify-center items-center gap-3 font-label-md text-label-md shadow-md text-base hover:scale-[1.02] hover:shadow-[0_6px_32px_rgba(16,57,185,0.35)] active:scale-[0.98] transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                          className="btn-shimmer w-full bg-primary text-on-primary py-4 px-6 rounded-xl flex justify-center items-center gap-3 font-label-md text-label-md shadow-md text-base hover:scale-[1.02] hover:shadow-[0_6px_32px_rgba(16,57,185,0.35)] active:scale-[0.98] transition-all duration-200"
                         >
-                          <span className="material-symbols-outlined">{downloadingId === currentRelease.id ? "progress_activity" : OS_CONFIG[os].icon}</span>
-                          {downloadingId === currentRelease.id ? t("download.downloading") : t(OS_CONFIG[os].labelKey)}
+                          <span className="material-symbols-outlined">{OS_CONFIG[os].icon}</span>
+                          {t(OS_CONFIG[os].labelKey)}
                           <span className="ml-auto font-body-sm text-sm opacity-70">{OS_CONFIG[os].ext}</span>
                         </button>
                       ) : (

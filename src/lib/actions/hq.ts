@@ -2810,7 +2810,7 @@ export async function getAllBillingPayments(): Promise<{
     const result = await supabase
       .from("billing_payments")
       .select("id, account_id, amount_tzs, reference, note, created_at, accounts(name), hq_admins(name)")
-      .order("uploaded_at", { ascending: false });
+      .order("created_at", { ascending: false });
     if (result.error) throw new Error(result.error.message);
     payments = result.data ?? [];
   } catch {
