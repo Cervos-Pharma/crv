@@ -15,7 +15,7 @@ export interface MarkerData {
   lng: number;
   label: string;
   status?: "online" | "offline" | "grace";
-  detail?: string;
+  detail?: string | null;
   accountName?: string;
   lastSync?: string;
 }
