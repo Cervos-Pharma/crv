@@ -103,13 +103,18 @@ async function createAuthUser(email, password, metadata) {
 async function seed() {
   console.log("Starting seed...\n");
 
-  // 0. Create HQ admin (upsert without role)
+  // 0. Wipe and recreate HQ admin
+  console.log("Wiping hq_admins...");
+  await supabase.from("hq_admins").delete().neq("id", "00000000-0000-0000-0000-000000000000");
   console.log("Creating HQ admin...");
-  const { error: hqError } = await supabase.from("hq_admins").upsert({
+  const { error: hqError } = await supabase.from("hq_admins").insert({
     email: "cervospharma@gmail.com",
     name: "CervoPharma HQ",
     password_hash: hashHQPassword("threebodyproblem"),
-  }, { onConflict: "email" });
+    role: "admin",
+    disabled: false,
+    last_login_at: null,
+  });
   if (hqError) {
     console.error("HQ admin error:", hqError.message);
   } else {
@@ -456,7 +461,7 @@ async function seed() {
   console.log("\nHQ Console: cervospharma@gmail.com / threebodyproblem (created)");
   console.log("\nPharmacy/Supplier accounts: sign up at /auth");
   console.log("  Note: auth.users creation failed due to schema - use web signup at /auth");
-  console.log("\nSupplier account: supplier@pharmacorp.com / password123 (auth user needs manual creation)"));
+  console.log("\nSupplier account: supplier@pharmacorp.com / password123 (auth user needs manual creation)");
 }
 
 seed().catch((err) => {

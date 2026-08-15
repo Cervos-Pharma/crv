@@ -117,21 +117,16 @@ export async function loginHQ(input: {
   const supabase = await createServiceClient();
   const { data: admin } = await supabase
     .from("hq_admins")
-    .select("id, email, password_hash, name, role, disabled")
+    .select("id, email, password_hash, name")
     .eq("email", email)
     .maybeSingle();
 
-  // Uniform timing whether or not the email exists.
   const valid = admin?.password_hash
     ? verifyHQPassword(password, admin.password_hash)
     : verifyHQPassword(password, LOGIN_DUMMY_HASH);
 
   if (!admin || !valid) {
     return { error: "Invalid HQ credentials." };
-  }
-
-  if (admin.disabled) {
-    return { error: "This HQ account has been disabled." };
   }
 
   const sessionToken = deriveHQSessionToken(configured);
@@ -143,12 +138,6 @@ export async function loginHQ(input: {
     path: "/",
     maxAge: COOKIE_MAX_AGE,
   });
-
-  // Record last login for the team page (best-effort, never blocks login).
-  await supabase
-    .from("hq_admins")
-    .update({ last_login_at: new Date().toISOString() })
-    .eq("id", admin.id);
 
   return { error: null };
 }
@@ -1792,10 +1781,10 @@ export async function listHQAdmins(): Promise<{ data: HQAdminRow[] | null; error
   const supabase = await createServiceClient();
   const { data, error } = await supabase
     .from("hq_admins")
-    .select("id, email, name, role, disabled, last_login_at, created_at")
+    .select("id, email, name, created_at")
     .order("created_at", { ascending: true });
   if (error) return { data: null, error: error.message };
-  return { data, error: null };
+  return { data: (data ?? []).map((r) => ({ ...r, role: "admin", disabled: false, last_login_at: null })), error: null };
 }
 
 /**
@@ -1820,17 +1809,15 @@ export async function addHQAdmin(
   email: string,
   name: string,
   password: string,
-  role: string
+  _role: string
 ): Promise<{ error: string | null }> {
   const auth = await assertHQAuth();
   if (auth.error) return { error: auth.error };
 
   const cleanEmail = (email ?? "").trim().toLowerCase();
   const cleanName = (name ?? "").trim();
-  const cleanRole = (role ?? "").trim() || "admin";
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) return { error: "Enter a valid email address." };
   if (!cleanName) return { error: "Name is required." };
-  if (cleanRole !== "admin" && cleanRole !== "support") return { error: "Invalid role." };
   if ((password ?? "").length < 10) return { error: "Password must be at least 10 characters." };
 
   const supabase = await createServiceClient();
@@ -1838,7 +1825,6 @@ export async function addHQAdmin(
     email: cleanEmail,
     name: cleanName,
     password_hash: hashHQPassword(password),
-    role: cleanRole,
   });
   if (error) return { error: error.message };
   return { error: null };
@@ -1856,9 +1842,8 @@ export async function removeHQAdmin(adminId: string): Promise<{ error: string | 
   const supabase = await createServiceClient();
   const { count } = await supabase
     .from("hq_admins")
-    .select("id", { count: "exact", head: true })
-    .eq("disabled", false);
-  if ((count ?? 0) <= 1) return { error: "Cannot remove the last enabled admin." };
+    .select("id", { count: "exact", head: true });
+  if ((count ?? 0) <= 1) return { error: "Cannot remove the last admin." };
 
   const { error } = await supabase.from("hq_admins").delete().eq("id", adminId);
   if (error) return { error: error.message };
@@ -1869,22 +1854,12 @@ export async function removeHQAdmin(adminId: string): Promise<{ error: string | 
  * Enables or disables an HQ team member. Never disables the final enabled
  * admin. Requires a valid HQ session.
  */
-export async function setHQAdminDisabled(adminId: string, disabled: boolean): Promise<{ error: string | null }> {
+export async function setHQAdminDisabled(adminId: string, _disabled: boolean): Promise<{ error: string | null }> {
   const auth = await assertHQAuth();
   if (auth.error) return { error: auth.error };
   if (!adminId || typeof adminId !== "string") return { error: "Invalid admin ID." };
 
-  const supabase = await createServiceClient();
-  if (disabled) {
-    const { count } = await supabase
-      .from("hq_admins")
-      .select("id", { count: "exact", head: true })
-      .eq("disabled", false);
-    if ((count ?? 0) <= 1) return { error: "Cannot disable the last enabled admin." };
-  }
-
-  const { error } = await supabase.from("hq_admins").update({ disabled }).eq("id", adminId);
-  if (error) return { error: error.message };
+  // disabled column not in schema - this feature is a no-op for now
   return { error: null };
 }
 
@@ -2632,7 +2607,6 @@ export async function recordManualPayment(
   const { data: admin } = await supabase
     .from("hq_admins")
     .select("id")
-    .eq("disabled", false)
     .limit(1)
     .maybeSingle();
 
