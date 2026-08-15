@@ -23,7 +23,7 @@ export async function GET(
     return NextResponse.json({ error: "Release not found" }, { status: 404 });
   }
 
-  const { data: signedUrlData, error: urlError } = supabase.storage
+  const { data: signedUrlData, error: urlError } = await supabase.storage
     .from("app-releases")
     .createSignedUrl(release.file_url, 60);
 
