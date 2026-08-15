@@ -11,10 +11,12 @@ const SIZE_CLASSES = {
   lg: "h-16 w-16",
 };
 
+const LOGO_URL = "/logo.png";
+
 export default function Logo({ size = "md", className = "" }: LogoProps) {
   return (
     <img
-      src={new URL("../assets/logo.png", import.meta.url).href}
+      src={LOGO_URL}
       alt={APP_NAME}
       className={`object-contain ${SIZE_CLASSES[size]} ${className}`}
     />
@@ -24,7 +26,7 @@ export default function Logo({ size = "md", className = "" }: LogoProps) {
 export function LogoMark({ className = "" }: { className?: string }) {
   return (
     <img
-      src={new URL("../assets/logo.png", import.meta.url).href}
+      src={LOGO_URL}
       alt={APP_NAME}
       className={`object-contain h-8 w-8 ${className}`}
     />

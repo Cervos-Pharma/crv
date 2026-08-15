@@ -27,7 +27,7 @@ export default function Login() {
   async function loadOperators() {
     const result = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
     if (result.length === 0) {
-      setIsCreatingAdmin(true)
+      navigate('/onboarding')
       return
     }
     const bid = JSON.parse(result[0].value)

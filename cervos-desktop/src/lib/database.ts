@@ -5,8 +5,11 @@ const DB_KEY = 'cervos_db'
 
 export async function initDb(): Promise<void> {
   if (db) return
+
   const initSqlJs = (await import('sql.js')).default
-  SQL = await initSqlJs()
+  SQL = await initSqlJs({
+    locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/sql.js/dist/${file}`
+  })
 
   const savedDb = localStorage.getItem(DB_KEY)
   if (savedDb) {

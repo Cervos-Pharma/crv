@@ -1,9 +1,10 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Pe } from '../lib/database'
-import { Nd, Z8, Wf } from '../lib/sync'
+import { Nd, Wf } from '../lib/sync'
+import { invoke } from '@tauri-apps/api/core'
 
-type OnboardingStep = 'welcome' | 'details' | 'logo' | 'location' | 'link' | 'done'
+type OnboardingStep = 'welcome' | 'details' | 'logo' | 'location' | 'login' | 'create-pin' | 'done'
 
 interface CentreDetails {
   name: string
@@ -20,42 +21,6 @@ interface LocationData {
 
 interface OnboardingProps {
   onComplete?: () => void
-}
-
-function ProgressIndicator({ current }: { current: OnboardingStep }) {
-  const steps: OnboardingStep[] = ['welcome', 'details', 'logo', 'location', 'link', 'done']
-  const labels = ['Welcome', 'Centre', 'Logo', 'Location', 'Link', 'Done']
-  const currentIndex = steps.indexOf(current)
-
-  return (
-    <div className="mb-6">
-      <div className="flex items-center justify-between mb-2">
-        {labels.map((label, index) => (
-          <div
-            key={index}
-            className={`flex flex-col items-center ${index <= currentIndex ? 'text-accent' : 'text-gray-500'}`}
-          >
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                index < currentIndex ? 'bg-accent text-white' :
-                index === currentIndex ? 'bg-accent text-white' :
-                'bg-surface-300 text-gray-400'
-              }`}
-            >
-              {index < currentIndex ? '✓' : index + 1}
-            </div>
-            <span className="text-xs mt-1 hidden sm:block">{label}</span>
-          </div>
-        ))}
-      </div>
-      <div className="h-1 bg-surface-300 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-accent transition-all duration-300"
-          style={{ width: `${(currentIndex / (steps.length - 1)) * 100}%` }}
-        />
-      </div>
-    </div>
-  )
 }
 
 async function detectLocation(): Promise<LocationData> {
@@ -133,25 +98,12 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [locationLoading, setLocationLoading] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
-  const inputClass = 'w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent'
-  const labelClass = 'block text-sm font-medium text-gray-400 mb-2'
-
-  async function handleDetailsSubmit() {
-    if (!details.name.trim() || !details.address.trim()) return
-    setIsLoading(true)
-    setError(null)
-    try {
-      await saveCentreDetails(details)
-      setStep('logo')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save details')
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const inputClass = 'w-full h-12 px-4 bg-surface-base border border-ink-deep/20 rounded-none text-body-md text-ink-deep focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-text-muted'
+  const btnClass = 'w-full h-12 bg-primary text-white rounded-none font-label-md font-bold flex items-center justify-center gap-2 hover:bg-primary/90 active:scale-[0.98] transition-all disabled:opacity-60'
 
   function handleLogoSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -167,6 +119,20 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       setLogoData(data)
     }
     reader.readAsDataURL(file)
+  }
+
+  async function handleDetailsSubmit() {
+    if (!details.name.trim() || !details.address.trim()) return
+    setIsLoading(true)
+    setError(null)
+    try {
+      await saveCentreDetails(details)
+      setStep('logo')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save details')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   async function handleLogoSubmit() {
@@ -199,30 +165,64 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
   async function handleLocationSubmit() {
     await saveLocation(location)
-    setStep('link')
+    setStep('login')
   }
 
-  async function handleLink() {
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault()
     setIsLoading(true)
     setError(null)
     try {
       await Nd(email.trim(), password)
       await Wf()
-      setStep('done')
+      setStep('create-pin')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not link account. Please check your credentials.')
+      setError(err instanceof Error ? err.message : 'Invalid email or password')
     } finally {
       setIsLoading(false)
     }
   }
 
-  async function handleDone() {
-    const isLinked = await Z8()
-    if (!isLinked) {
-      setError('You must link your account to continue')
-      setStep('link')
+  async function handleCreatePin(e: React.FormEvent) {
+    e.preventDefault()
+    if (pin.length < 4) {
+      setError('PIN must be at least 4 digits')
       return
     }
+    setIsLoading(true)
+    setError(null)
+    try {
+      const { createOperator } = await import('../lib/queries')
+      const { Fe } = await import('../lib/database')
+      const { Et } = await import('../lib/database')
+
+      const branchResult = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
+      const branchId = branchResult.length > 0 ? JSON.parse(branchResult[0].value) : Et()
+
+      await createOperator({
+        branch_id: branchId,
+        name: 'Admin',
+        pin: pin,
+        role: 'admin',
+      })
+
+      setStep('done')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create PIN')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  async function handleOpenSignup() {
+    try {
+      await invoke('open', { url: 'https://cervos.online/signup' })
+    } catch {
+      window.open('https://cervos.online/signup', '_blank')
+    }
+  }
+
+  function handleDone() {
     if (onComplete) {
       onComplete()
     } else {
@@ -231,285 +231,361 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface p-4">
-      <div className="w-full max-w-lg">
-        <ProgressIndicator current={step} />
+    <div className="min-h-screen flex flex-col relative overflow-hidden">
+      <div className="fixed inset-0 z-0 bg-cover bg-center" style={{ backgroundImage: "url('/pharmacist-1.png')", filter: "blur(10px)", transform: "scale(1.1)" }} />
+      <div className="fixed inset-0 z-0 bg-surface/80" />
 
-        <div className="bg-surface-100 rounded-2xl border border-surface-300 p-8">
-          {step === 'welcome' && (
-            <div className="text-center">
-              <div className="w-20 h-20 mx-auto mb-4 bg-accent/10 rounded-full flex items-center justify-center">
-                <span className="material-symbols-outlined text-5xl text-accent">local_pharmacy</span>
+      <div className="fixed bottom-[-8%] left-[-8%] w-[500px] h-[500px] opacity-[0.06] pointer-events-none z-0">
+        <img src="/logo.png" alt="" className="w-full h-full object-contain" style={{ mixBlendMode: "multiply" }} />
+      </div>
+
+      <header className="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-8 py-5">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 relative">
+            <img src="/logo.png" alt="Cervos" className="w-full h-full object-contain" />
+          </div>
+          <span className="font-headline text-headline-md font-bold text-primary tracking-tight">Cervos</span>
+        </div>
+      </header>
+
+      <main className="flex-grow flex items-center justify-center lg:justify-end lg:pr-24 p-4 relative z-10 pt-24 pb-16">
+        <div className="relative w-full max-w-[460px]">
+          <div className="hud-panel absolute inset-0" />
+          <div className="hud-border" />
+          <div className="hud-notch-line" />
+
+          <div className="relative z-10 p-8 md:p-10">
+            {step === 'welcome' && (
+              <div className="text-center">
+                <div className="w-20 h-20 mx-auto mb-6 relative">
+                  <img src="/logo.png" alt="Cervos" className="w-full h-full object-contain" />
+                </div>
+                <h1 className="font-headline-lg text-headline-lg text-ink-deep mb-2">Welcome to Cervos</h1>
+                <p className="font-body-md text-body-md text-on-surface-variant mb-8">
+                  Set up your pharmacy centre in a few steps. Already have an account? Sign in below.
+                </p>
+                <button
+                  onClick={() => setStep('details')}
+                  className={btnClass + ' mb-4'}
+                >
+                  Get Started
+                </button>
+                <button
+                  onClick={() => setStep('login')}
+                  className="w-full h-12 border border-ink-deep/20 text-ink-deep font-label-md font-bold rounded-none flex items-center justify-center gap-2 hover:border-primary hover:text-primary transition-all"
+                >
+                  Sign In
+                </button>
               </div>
-              <h1 className="text-2xl font-display font-bold text-white mb-2">Welcome to Cervos Pharmacy</h1>
-              <p className="text-gray-400 mb-6">
-                Let's set up your pharmacy centre. We'll need some details about your location and an admin account to link with.
-              </p>
-              <button
-                onClick={() => setStep('details')}
-                className="w-full py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent2 transition-colors"
-              >
-                Get started
-              </button>
-            </div>
-          )}
+            )}
 
-          {step === 'details' && (
-            <div>
-              <h2 className="text-xl font-semibold text-white mb-6">Centre Details</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className={labelClass}>Centre name *</label>
-                  <input
-                    type="text"
-                    value={details.name}
-                    onChange={(e) => setDetails({ ...details, name: e.target.value })}
-                    className={inputClass}
-                    placeholder="e.g. Green Cross Pharmacy"
-                  />
+            {step === 'details' && (
+              <form onSubmit={(e) => { e.preventDefault(); handleDetailsSubmit(); }} className="flex flex-col gap-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <button type="button" onClick={() => setStep('welcome')} className="text-on-surface-variant hover:text-primary">
+                    <span className="material-symbols-outlined">arrow_back</span>
+                  </button>
+                  <h2 className="font-headline-md text-headline-md text-ink-deep">Centre Details</h2>
                 </div>
-                <div>
-                  <label className={labelClass}>Address *</label>
-                  <input
-                    type="text"
-                    value={details.address}
-                    onChange={(e) => setDetails({ ...details, address: e.target.value })}
-                    className={inputClass}
-                    placeholder="e.g. 123 Main Street, Nairobi"
-                  />
-                </div>
-                <div>
-                  <label className={labelClass}>Phone number</label>
+
+                <input
+                  type="text"
+                  value={details.name}
+                  onChange={(e) => setDetails({ ...details, name: e.target.value })}
+                  placeholder="Centre name (e.g. Green Cross Pharmacy)"
+                  required
+                  className={inputClass}
+                />
+                <input
+                  type="text"
+                  value={details.address}
+                  onChange={(e) => setDetails({ ...details, address: e.target.value })}
+                  placeholder="Address"
+                  required
+                  className={inputClass}
+                />
+                <div className="grid grid-cols-2 gap-3">
                   <input
                     type="tel"
                     value={details.phone}
                     onChange={(e) => setDetails({ ...details, phone: e.target.value })}
+                    placeholder="Phone"
                     className={inputClass}
-                    placeholder="e.g. +254 700 123456"
                   />
-                </div>
-                <div>
-                  <label className={labelClass}>Email address</label>
                   <input
                     type="email"
                     value={details.email}
                     onChange={(e) => setDetails({ ...details, email: e.target.value })}
+                    placeholder="Email"
                     className={inputClass}
-                    placeholder="e.g. info@pharmacyname.com"
                   />
                 </div>
-              </div>
-              {error && (
-                <div className="mt-4 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-sm">
-                  {error}
-                </div>
-              )}
-              <button
-                onClick={handleDetailsSubmit}
-                disabled={!details.name.trim() || !details.address.trim() || isLoading}
-                className="mt-6 w-full py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent2 transition-colors disabled:opacity-50"
-              >
-                {isLoading ? 'Saving...' : 'Continue'}
-              </button>
-            </div>
-          )}
 
-          {step === 'logo' && (
-            <div>
-              <h2 className="text-xl font-semibold text-white mb-6">Centre Logo</h2>
-              <p className="text-gray-400 text-sm mb-4">Upload your pharmacy's logo. This will appear on receipts and receipts.</p>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleLogoSelect}
-                className="hidden"
-              />
-
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-surface-300 rounded-xl p-8 text-center cursor-pointer hover:border-accent transition-colors"
-              >
-                {logoPreview ? (
-                  <img src={logoPreview} alt="Logo preview" className="w-24 h-24 mx-auto object-contain" />
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined text-4xl text-gray-400">add_photo_alternate</span>
-                    <p className="mt-2 text-sm text-gray-400">Click to upload logo</p>
-                  </>
+                {error && (
+                  <div className="p-3 bg-error/10 border border-error/20 rounded text-error text-sm">
+                    {error}
+                  </div>
                 )}
-              </div>
 
-              {error && (
-                <div className="mt-4 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-sm">
-                  {error}
-                </div>
-              )}
-
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={() => { setLogoPreview(null); setLogoData(null); }}
-                  className="flex-1 py-3 rounded-lg bg-surface-300 text-white font-medium hover:bg-surface-400 transition-colors"
-                >
-                  Skip
+                <button type="submit" disabled={!details.name.trim() || !details.address.trim() || isLoading} className={btnClass}>
+                  {isLoading ? 'Saving...' : 'Continue'}
                 </button>
+              </form>
+            )}
+
+            {step === 'logo' && (
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <button type="button" onClick={() => setStep('details')} className="text-on-surface-variant hover:text-primary">
+                    <span className="material-symbols-outlined">arrow_back</span>
+                  </button>
+                  <h2 className="font-headline-md text-headline-md text-ink-deep">Centre Logo</h2>
+                </div>
+
+                <p className="font-body-sm text-body-sm text-on-surface-variant mb-2">
+                  Upload your pharmacy's logo. This appears on receipts.
+                </p>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoSelect}
+                  className="hidden"
+                />
+
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-ink-deep/20 rounded p-8 text-center cursor-pointer hover:border-primary transition-colors"
+                >
+                  {logoPreview ? (
+                    <img src={logoPreview} alt="Logo preview" className="w-24 h-24 mx-auto object-contain" />
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-4xl text-on-surface-variant">add_photo_alternate</span>
+                      <p className="mt-2 text-sm text-on-surface-variant">Click to upload logo</p>
+                    </>
+                  )}
+                </div>
+
                 <button
                   onClick={handleLogoSubmit}
-                  className="flex-1 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent2 transition-colors"
+                  className={btnClass}
                 >
                   Continue
                 </button>
+                <button
+                  type="button"
+                  onClick={() => { setLogoPreview(null); setLogoData(null); handleLogoSubmit(); }}
+                  className="text-on-surface-variant hover:text-primary text-sm"
+                >
+                  Skip for now
+                </button>
               </div>
-            </div>
-          )}
+            )}
 
-          {step === 'location' && (
-            <div>
-              <h2 className="text-xl font-semibold text-white mb-6">Location</h2>
-              <p className="text-gray-400 text-sm mb-4">Auto-detect your pharmacy's GPS location for delivery routing and analytics.</p>
+            {step === 'location' && (
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <button type="button" onClick={() => setStep('logo')} className="text-on-surface-variant hover:text-primary">
+                    <span className="material-symbols-outlined">arrow_back</span>
+                  </button>
+                  <h2 className="font-headline-md text-headline-md text-ink-deep">Location</h2>
+                </div>
 
-              <div className="bg-surface rounded-xl p-6 text-center">
-                {location.detected ? (
-                  <div className="text-accent">
-                    <span className="material-symbols-outlined text-4xl">check_circle</span>
-                    <p className="mt-2 font-medium">Location detected</p>
-                    <p className="text-sm text-gray-400 mt-1">
-                      {location.lat?.toFixed(6)}, {location.lng?.toFixed(6)}
-                    </p>
-                  </div>
-                ) : locationLoading ? (
-                  <div className="text-gray-400">
-                    <span className="material-symbols-outlined text-4xl animate-spin">progress_activity</span>
-                    <p className="mt-2">Detecting location...</p>
-                  </div>
-                ) : (
-                  <div className="text-gray-400">
-                    <span className="material-symbols-outlined text-4xl">location_off</span>
-                    <p className="mt-2">No location detected</p>
+                <p className="font-body-sm text-body-sm text-on-surface-variant mb-4">
+                  Auto-detect your pharmacy's GPS location for delivery routing and analytics.
+                </p>
+
+                <div className="bg-surface-container rounded p-6 text-center">
+                  {location.detected ? (
+                    <div className="text-primary">
+                      <span className="material-symbols-outlined text-4xl">check_circle</span>
+                      <p className="mt-2 font-medium">Location detected</p>
+                      <p className="text-sm text-on-surface-variant mt-1">
+                        {location.lat?.toFixed(6)}, {location.lng?.toFixed(6)}
+                      </p>
+                    </div>
+                  ) : locationLoading ? (
+                    <div className="text-on-surface-variant">
+                      <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin mx-auto mb-2" />
+                      <p>Detecting location...</p>
+                    </div>
+                  ) : (
+                    <div className="text-on-surface-variant">
+                      <span className="material-symbols-outlined text-4xl">location_off</span>
+                      <p className="mt-2">No location detected</p>
+                    </div>
+                  )}
+                </div>
+
+                {error && (
+                  <div className="p-3 bg-amber-100 border border-amber-200 rounded text-amber-800 text-sm">
+                    {error}
                   </div>
                 )}
-              </div>
 
-              {error && (
-                <div className="mt-4 p-4 bg-yellow-500/20 border border-yellow-500/50 rounded-lg text-yellow-400 text-sm">
-                  {error}
-                </div>
-              )}
-
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={() => setStep('link')}
-                  className="flex-1 py-3 rounded-lg bg-surface-300 text-white font-medium hover:bg-surface-400 transition-colors"
-                >
-                  Skip
-                </button>
                 {!location.detected ? (
                   <button
                     onClick={handleDetectLocation}
                     disabled={locationLoading}
-                    className="flex-1 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent2 transition-colors disabled:opacity-50"
+                    className={btnClass}
                   >
                     {locationLoading ? 'Detecting...' : 'Detect Location'}
                   </button>
                 ) : (
                   <button
                     onClick={handleLocationSubmit}
-                    className="flex-1 py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent2 transition-colors"
+                    className={btnClass}
                   >
                     Continue
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setStep('login')}
+                  className="text-on-surface-variant hover:text-primary text-sm"
+                >
+                  Skip for now
+                </button>
               </div>
-            </div>
-          )}
+            )}
 
-          {step === 'link' && (
-            <div>
-              <h2 className="text-xl font-semibold text-white mb-6">Link to Admin</h2>
-              <p className="text-gray-400 text-sm mb-4">
-                Connect to your online Cervos admin account. This will register your branch and enable cloud sync.
-              </p>
+            {step === 'login' && (
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <button type="button" onClick={() => setStep('location')} className="text-on-surface-variant hover:text-primary">
+                    <span className="material-symbols-outlined">arrow_back</span>
+                  </button>
+                  <h2 className="font-headline-md text-headline-md text-ink-deep">Sign In</h2>
+                </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className={labelClass}>Admin email</label>
+                <p className="font-body-sm text-body-sm text-on-surface-variant mb-2">
+                  Link this device to your Cervos admin account to sync data across devices.
+                </p>
+
+                <form onSubmit={handleLogin} className="flex flex-col gap-3">
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Email"
+                    required
                     className={inputClass}
-                    placeholder="admin@yourpharmacy.com"
                   />
-                </div>
-                <div>
-                  <label className={labelClass}>Password</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className={inputClass}
-                    placeholder="••••••••"
-                  />
-                </div>
-              </div>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Password"
+                      required
+                      className={inputClass + ' pr-10'}
+                    />
+                  </div>
 
-              {error && (
-                <div className="mt-4 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-sm">
-                  {error}
-                </div>
-              )}
-
-              <div className="mt-6 p-4 bg-surface rounded-lg text-sm text-gray-400">
-                <p className="font-medium text-white mb-1">What happens next:</p>
-                <ul className="list-disc list-inside space-y-1">
-                  <li>Your centre details are registered with the admin</li>
-                  <li>A branch is created for your pharmacy</li>
-                  <li>Data sync between devices is enabled</li>
-                </ul>
-              </div>
-
-              <button
-                onClick={handleLink}
-                disabled={isLoading || !email.trim() || !password}
-                className="mt-6 w-full py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent2 transition-colors disabled:opacity-50"
-              >
-                {isLoading ? 'Linking...' : 'Link Account'}
-              </button>
-            </div>
-          )}
-
-          {step === 'done' && (
-            <div className="text-center">
-              <div className="w-20 h-20 mx-auto mb-4 bg-green-500/10 rounded-full flex items-center justify-center">
-                <span className="material-symbols-outlined text-5xl text-green-500">check_circle</span>
-              </div>
-              <h2 className="text-2xl font-display font-bold text-white mb-2">You're all set!</h2>
-              <p className="text-gray-400 mb-6">
-                Your centre is registered and linked. You can now start using Cervos Pharmacy OS.
-              </p>
-
-              <div className="bg-surface rounded-lg p-4 text-left text-sm mb-6">
-                <h3 className="font-medium text-white mb-2">Centre Summary</h3>
-                <div className="space-y-1 text-gray-400">
-                  <p><span className="text-gray-500">Name:</span> {details.name}</p>
-                  <p><span className="text-gray-500">Address:</span> {details.address}</p>
-                  {location.detected && (
-                    <p><span className="text-gray-500">Location:</span> {location.lat?.toFixed(4)}, {location.lng?.toFixed(4)}</p>
+                  {error && (
+                    <div className="p-3 bg-error/10 border border-error/20 rounded text-error text-sm">
+                      {error}
+                    </div>
                   )}
-                </div>
-              </div>
 
-              <button
-                onClick={handleDone}
-                className="w-full py-3 rounded-lg bg-accent text-white font-medium hover:bg-accent2 transition-colors"
-              >
-                Go to Login
-              </button>
-            </div>
-          )}
+                  <button type="submit" disabled={isLoading || !email.trim() || !password} className={btnClass}>
+                    {isLoading ? 'Signing in...' : 'Sign In'}
+                  </button>
+                </form>
+
+                <div className="relative my-2">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-ink-deep/10" />
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="bg-surface-base px-4 text-sm text-on-surface-variant">or</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleOpenSignup}
+                  className="w-full h-12 border border-ink-deep/20 text-ink-deep font-label-md font-bold rounded-none flex items-center justify-center gap-2 hover:border-primary hover:text-primary transition-all"
+                >
+                  <span className="material-symbols-outlined text-[18px]">domain_add</span>
+                  Create Account at cervos.online
+                </button>
+
+                <p className="text-center text-sm text-on-surface-variant mt-2">
+                  No account needed for offline-only mode.{' '}
+                  <button type="button" onClick={() => setStep('create-pin')} className="text-primary hover:underline font-semibold">
+                    Skip sign in
+                  </button>
+                </p>
+              </div>
+            )}
+
+            {step === 'create-pin' && (
+              <form onSubmit={handleCreatePin} className="flex flex-col gap-4">
+                <div className="text-center mb-2">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                    <span className="material-symbols-outlined text-[24px] text-primary">lock</span>
+                  </div>
+                  <h2 className="font-headline-md text-headline-md text-ink-deep mb-1">Create Admin PIN</h2>
+                  <p className="font-body-sm text-body-sm text-on-surface-variant">
+                    Set a 4+ digit PIN to secure this device
+                  </p>
+                </div>
+
+                <input
+                  type="password"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  placeholder="Enter PIN (4+ digits)"
+                  required
+                  minLength={4}
+                  maxLength={8}
+                  className={inputClass + ' text-center text-2xl tracking-widest'}
+                />
+
+                {error && (
+                  <div className="p-3 bg-error/10 border border-error/20 rounded text-error text-sm">
+                    {error}
+                  </div>
+                )}
+
+                <button type="submit" disabled={pin.length < 4 || isLoading} className={btnClass}>
+                  {isLoading ? 'Creating...' : 'Create PIN'}
+                </button>
+              </form>
+            )}
+
+            {step === 'done' && (
+              <div className="text-center">
+                <div className="w-16 h-16 mx-auto mb-4 bg-secondary/10 rounded-full flex items-center justify-center">
+                  <span className="material-symbols-outlined text-5xl text-secondary">check_circle</span>
+                </div>
+                <h2 className="font-headline-md text-headline-md text-ink-deep mb-2">You're All Set!</h2>
+                <p className="font-body-md text-body-md text-on-surface-variant mb-6">
+                  Your centre is configured and ready to use.
+                </p>
+
+                <div className="bg-surface-container rounded p-4 text-left text-sm mb-6">
+                  <h3 className="font-medium text-ink-deep mb-2">Centre Summary</h3>
+                  <div className="space-y-1 text-on-surface-variant">
+                    <p><span className="text-text-muted">Name:</span> {details.name}</p>
+                    <p><span className="text-text-muted">Address:</span> {details.address}</p>
+                    {location.detected && (
+                      <p><span className="text-text-muted">Location:</span> {location.lat?.toFixed(4)}, {location.lng?.toFixed(4)}</p>
+                    )}
+                  </div>
+                </div>
+
+                <button onClick={handleDone} className={btnClass}>
+                  Go to Dashboard
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </main>
     </div>
   )
 }

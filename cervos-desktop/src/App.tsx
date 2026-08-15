@@ -63,8 +63,14 @@ function OnboardingRoute() {
 
   useEffect(() => {
     const check = async () => {
-      const result = await Fe("SELECT value FROM app_settings WHERE key = 'pharmacy_name'")
-      setIsOnboarded(result.length > 0)
+      try {
+        await initDb()
+        const result = await Fe("SELECT value FROM app_settings WHERE key = 'centre_name'")
+        setIsOnboarded(result.length > 0)
+      } catch (err) {
+        console.error('OnboardingRoute check failed:', err)
+        setIsOnboarded(false)
+      }
     }
     check()
   }, [])
