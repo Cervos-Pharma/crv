@@ -194,8 +194,7 @@ export default function HQDownloadsClient({ releases: initialReleases }: HQDownl
     setDeletingId(release.id);
     setConfirmDeleteId(null);
     try {
-      const filePath = release.file_url.replace(/^.*\/storage\/v1\/object\/public\/app-releases\//, "");
-      const result = await deleteRelease(release.id, filePath);
+      const result = await deleteRelease(release.id, release.file_path);
       if (result.error) {
         setToast({ message: result.error, type: "error" });
       } else {

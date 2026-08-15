@@ -254,6 +254,7 @@ export interface AppRelease {
   id: string;
   platform: "windows" | "mac" | "linux";
   version: string;
+  file_path: string;
   file_url: string;
   file_size_bytes: number;
   release_notes: string | null;
@@ -408,6 +409,7 @@ export async function confirmUpload(
   const { error: insertError } = await supabase.from("app_releases").insert({
     platform,
     version: version.trim(),
+    file_path: filePath,
     file_url: filePath,
     file_size_bytes: fileSizeBytes,
     release_notes: releaseNotes?.trim() || null,
