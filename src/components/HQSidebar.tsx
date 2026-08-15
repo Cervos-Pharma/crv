@@ -21,6 +21,7 @@ interface HQSidebarProps {
 
 const NAV = [
   { label: "Overview",       href: "/hq",                icon: "dashboard" },
+  { label: "Alerts",         href: "/hq/alerts",         icon: "notifications" },
   { label: "Intelligence",   href: "/hq/intelligence",   icon: "insights" },
   { label: "Accounts",       href: "/hq/accounts",       icon: "group" },
   { label: "Billing",        href: "/hq/billing",        icon: "payments" },

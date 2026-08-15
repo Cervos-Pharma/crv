@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { useAuthStore } from '../lib/store'
-import Logo, { LogoMark } from './Logo'
+import { LogoMark } from './Logo'
 
 const baseNavItems = [
   { path: '/', icon: 'dashboard', label: 'Dashboard' },

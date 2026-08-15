@@ -49,6 +49,37 @@ export async function createBranch(
 ): Promise<{ error: string | null }> {
   const supabase = await createClient();
 
+  const { data: account } = await supabase
+    .from("accounts")
+    .select("subscription_plan")
+    .eq("id", accountId)
+    .single();
+
+  if (!account) return { error: "Account not found." };
+
+  let maxBranches = 1;
+
+  if (account.subscription_plan) {
+    const { data: plan } = await supabase
+      .from("subscription_plans")
+      .select("max_branches")
+      .eq("id", account.subscription_plan)
+      .maybeSingle();
+
+    if (plan && typeof plan.max_branches === "number" && plan.max_branches > 0) {
+      maxBranches = plan.max_branches;
+    }
+  }
+
+  const { count } = await supabase
+    .from("branches")
+    .select("*", { count: "exact", head: true })
+    .eq("account_id", accountId);
+
+  if (count !== null && count >= maxBranches) {
+    return { error: "Branch limit reached. Upgrade your plan to add more branches." };
+  }
+
   const { error } = await supabase.from("branches").insert({
     account_id: accountId,
     name: input.name,

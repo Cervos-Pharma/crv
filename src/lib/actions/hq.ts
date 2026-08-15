@@ -1752,6 +1752,23 @@ export async function lockBranch(branchId: string): Promise<{ error: string | nu
   return { error: null };
 }
 
+export async function unsuspendBranch(branchId: string): Promise<{ error: string | null }> {
+  const auth = await assertHQAuth();
+  if (auth.error) return { error: auth.error };
+  if (!branchId || typeof branchId !== "string") return { error: "Invalid branch ID." };
+
+  const supabase = await createServiceClient();
+  const { error } = await supabase
+    .from("branches")
+    .update({
+      subscription_status: "active",
+      locked_reason: null,
+    })
+    .eq("id", branchId);
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
 /**
  * Extends a branch's trial by `days` and clears any lock/unlock stamps.
  * Requires a valid HQ session.
@@ -2893,7 +2910,8 @@ export async function getBillingAccounts(): Promise<{ data: BillingAccount[] | n
 
   if (!accounts.length) return { data: [], error: null };
 
-  const planMap = new Map(plans.map((p) => [p.id as string, p]));
+  const planMapById = new Map(plans.map((p) => [p.id as string, p]));
+  const planMapByName = new Map(plans.map((p) => [p.name as string, p]));
 
   const branchesByAccount = new Map<string, number>();
   for (const b of branches) {
@@ -2910,7 +2928,7 @@ export async function getBillingAccounts(): Promise<{ data: BillingAccount[] | n
 
   const data: BillingAccount[] = accounts.map((a) => {
     const branchCount = branchesByAccount.get(a.id as string) ?? 0;
-    const plan = planMap.get(a.subscription_plan as string);
+    const plan = planMapById.get(a.subscription_plan as string) ?? planMapByName.get(a.subscription_plan as string);
     const mrr = plan ? (Number(plan.price_monthly_tzs) || 0) * branchCount : 0;
     const lastPayment = lastPaymentByAccount.get(a.id as string);
 
@@ -2980,13 +2998,15 @@ export async function getAccountBillingHistory(
 
 /**
  * Updates an account's subscription plan and/or status.
+ * When a plan UUID is provided, max_branches is enforced — excess branches
+ * (oldest by created_at) are set to "locked" status so they can't be used.
  * Requires a valid HQ session.
  */
 export async function updateAccountSubscription(
   accountId: string,
-  plan: string | null,
+  planId: string | null,
   status: string | null
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; suspendedBranchIds?: string[] }> {
   const auth = await assertHQAuth();
   if (auth.error) return { error: auth.error };
   if (!accountId || typeof accountId !== "string") return { error: "Invalid account ID." };
@@ -2994,14 +3014,46 @@ export async function updateAccountSubscription(
   const supabase = await createServiceClient();
 
   const patch: Record<string, unknown> = {};
-  if (plan !== undefined) patch.subscription_plan = plan;
+  if (planId !== undefined && planId !== null) patch.subscription_plan = planId;
   if (status !== undefined) patch.subscription_status = status;
 
   if (Object.keys(patch).length === 0) return { error: null };
 
   const { error } = await supabase.from("accounts").update(patch).eq("id", accountId);
   if (error) return { error: error.message };
-  return { error: null };
+
+  let suspendedBranchIds: string[] = [];
+
+  if (planId) {
+    const { data: plan } = await supabase
+      .from("subscription_plans")
+      .select("max_branches")
+      .eq("id", planId)
+      .maybeSingle();
+
+    if (plan && typeof plan.max_branches === "number" && plan.max_branches > 0) {
+      const { data: branches } = await supabase
+        .from("branches")
+        .select("id, created_at")
+        .eq("account_id", accountId)
+        .order("created_at", { ascending: true });
+
+      const branchList = (branches ?? []) as Array<{ id: string; created_at: string }>;
+      if (branchList.length > plan.max_branches) {
+        const excess = branchList.slice(0, branchList.length - plan.max_branches);
+        const idsToLock = excess.map((b) => b.id);
+
+        await supabase
+          .from("branches")
+          .update({ subscription_status: "locked", locked_reason: "max_branches_exceeded" })
+          .in("id", idsToLock);
+
+        suspendedBranchIds = idsToLock;
+      }
+    }
+  }
+
+  return { error: null, suspendedBranchIds };
 }
 
 export async function recordManualPayment(
@@ -4506,4 +4558,197 @@ export async function generateIntelligenceReport(filters: ReportFilters): Promis
   } catch (e) {
     return { data: null, error: e instanceof Error ? e.message : "Failed to generate report." };
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// HQ Alerts — critical network-wide events requiring attention
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface HQAlert {
+  id: string;
+  severity: "critical" | "warning" | "info";
+  category: "expiry" | "stock" | "sync" | "billing" | "account" | "support";
+  title: string;
+  description: string;
+  count: number;
+  route: string;
+  createdAt: string;
+}
+
+export async function getHQAlerts(): Promise<{ data: HQAlert[]; error: string | null }> {
+  const auth = await assertHQAuth();
+  if (auth.error) return { data: [], error: auth.error };
+
+  const supabase = await createServiceClient();
+  const alerts: HQAlert[] = [];
+
+  try {
+    const now = Date.now();
+    const dayMs = 86400000;
+    const sevenDaysMs = 7 * dayMs;
+
+    let branches: Record<string, unknown>[] = [];
+    let batches: Record<string, unknown>[] = [];
+    let products: Record<string, unknown>[] = [];
+    let accounts: Record<string, unknown>[] = [];
+    let tickets: Record<string, unknown>[] = [];
+    let sales: Record<string, unknown>[] = [];
+
+    try {
+      const [branchesResult, batchesResult, productsResult, accountsResult, ticketsResult] = await Promise.all([
+        supabase.from("branches").select("id, name, subscription_status, last_synced_at, account_id"),
+        supabase.from("batches").select("id, branch_id, product_id, quantity, expiry_date"),
+        supabase.from("products").select("id, generic_name, branch_id"),
+        supabase.from("accounts").select("id, name, billing_status, verified, type"),
+        supabase.from("support_tickets").select("id, subject, status, created_at"),
+      ]);
+      branches = (branchesResult.data ?? []) as typeof branches;
+      batches = (batchesResult.data ?? []) as typeof batches;
+      products = (productsResult.data ?? []) as typeof products;
+      accounts = (accountsResult.data ?? []) as typeof accounts;
+      tickets = (ticketsResult.data ?? []) as typeof tickets;
+    } catch { /* individual failures */ }
+
+    // 1. CRITICAL — Batches expiring within 30 days
+    const thirtyDaysFromNow = now + 30 * dayMs;
+    const criticalExpiry: Map<string, number> = new Map();
+    for (const bat of batches) {
+      const exp = bat.expiry_date as string | null;
+      if (!exp) continue;
+      const expMs = new Date(exp).getTime();
+      if (expMs > now && expMs < thirtyDaysFromNow) {
+        const bid = bat.branch_id as string;
+        criticalExpiry.set(bid, (criticalExpiry.get(bid) ?? 0) + 1);
+      }
+    }
+    if (criticalExpiry.size > 0) {
+      alerts.push({
+        id: "critical-expiry",
+        severity: "critical",
+        category: "expiry",
+        title: `${criticalExpiry.size} branch${criticalExpiry.size > 1 ? "es" : ""} with expiring stock`,
+        description: "Batches expiring within 30 days — immediate FEFO action required",
+        count: [...criticalExpiry.values()].reduce((a, b) => a + b, 0),
+        route: "/hq/intelligence",
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // 2. OUT OF STOCK — products with zero quantity
+    const oosMap: Map<string, number> = new Map();
+    for (const bat of batches) {
+      if ((bat.quantity as number) === 0) {
+        const pid = bat.product_id as string;
+        oosMap.set(pid, (oosMap.get(pid) ?? 0) + 1);
+      }
+    }
+    if (oosMap.size > 0) {
+      alerts.push({
+        id: "out-of-stock",
+        severity: "critical",
+        category: "stock",
+        title: `${oosMap.size} product${oosMap.size > 1 ? "s" : ""} out of stock`,
+        description: "Zero-quantom batches detected across branches — replenishment needed",
+        count: oosMap.size,
+        route: "/hq/intelligence",
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // 3. SYNC — branches not synced in 7+ days
+    const staleBranches: string[] = [];
+    for (const b of branches) {
+      const lastSync = b.last_synced_at as string | null;
+      if (!lastSync) { staleBranches.push(b.name as string); continue; }
+      if (now - new Date(lastSync).getTime() > sevenDaysMs) staleBranches.push(b.name as string);
+    }
+    if (staleBranches.length > 0) {
+      alerts.push({
+        id: "sync-stale",
+        severity: "warning",
+        category: "sync",
+        title: `${staleBranches.length} branch${staleBranches.length > 1 ? "es" : ""} stale`,
+        description: `No sync in 7+ days — ${staleBranches.slice(0, 3).join(", ")}${staleBranches.length > 3 ? "…" : ""}`,
+        count: staleBranches.length,
+        route: "/hq/network",
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // 4. BILLING — inactive/past-due accounts
+    const inactiveAccounts: string[] = [];
+    for (const a of accounts) {
+      const bs = a.billing_status as string;
+      if (bs === "inactive" || bs === "past_due") inactiveAccounts.push(a.name as string);
+    }
+    if (inactiveAccounts.length > 0) {
+      alerts.push({
+        id: "billing-issues",
+        severity: "warning",
+        category: "billing",
+        title: `${inactiveAccounts.length} account${inactiveAccounts.length > 1 ? "s" : ""} payment issue`,
+        description: `${inactiveAccounts.slice(0, 3).join(", ")}${inactiveAccounts.length > 3 ? "…" : ""}`,
+        count: inactiveAccounts.length,
+        route: "/hq/billing",
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // 5. UNVERIFIED accounts (potential fraud/risk)
+    const unverifiedAccounts = (accounts as Array<Record<string, unknown>>).filter((a) => !(a.verified as boolean));
+    if (unverifiedAccounts.length > 0) {
+      alerts.push({
+        id: "unverified-accounts",
+        severity: "warning",
+        category: "account",
+        title: `${unverifiedAccounts.length} unverified account${unverifiedAccounts.length > 1 ? "s" : ""}`,
+        description: "Accounts pending verification — review required",
+        count: unverifiedAccounts.length,
+        route: "/hq/accounts",
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // 6. OPEN support tickets
+    const openTickets = (tickets as Array<Record<string, unknown>>).filter((t) => {
+      const s = t.status as string;
+      return s === "open" || s === "pending" || s === "in_progress";
+    });
+    if (openTickets.length > 0) {
+      alerts.push({
+        id: "open-tickets",
+        severity: "warning",
+        category: "support",
+        title: `${openTickets.length} open support ticket${openTickets.length > 1 ? "s" : ""}`,
+        description: "Support tickets requiring response",
+        count: openTickets.length,
+        route: "/hq/support",
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // 7. INFO — new accounts this week
+    const oneWeekAgo = new Date(now - 7 * dayMs).toISOString();
+    const newAccounts = (accounts as Array<Record<string, unknown>>).filter((a) => {
+      const created = a.created_at as string | null;
+      return created && created > oneWeekAgo;
+    });
+    if (newAccounts.length > 0) {
+      alerts.push({
+        id: "new-accounts",
+        severity: "info",
+        category: "account",
+        title: `${newAccounts.length} new account${newAccounts.length > 1 ? "s" : ""} this week`,
+        description: "New registrations — monitor onboarding completion",
+        count: newAccounts.length,
+        route: "/hq/accounts",
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+  } catch (e) {
+    return { data: [], error: e instanceof Error ? e.message : "Failed to load alerts." };
+  }
+
+  return { data: alerts, error: null };
 }

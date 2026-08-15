@@ -139,7 +139,11 @@ export default function HQBillingClient({
       if (result.error) {
         showToast(result.error, "error");
       } else {
-        showToast(`${changePlanTarget.account_name} updated.`, "success");
+        const suspended = result.suspendedBranchIds?.length;
+        const msg = suspended
+          ? `${changePlanTarget.account_name} updated. ${suspended} branch${suspended > 1 ? "es" : ""} suspended (max_branches exceeded).`
+          : `${changePlanTarget.account_name} updated.`;
+        showToast(msg, "success");
         setChangePlanOpen(false);
         window.location.reload();
       }
@@ -629,7 +633,7 @@ export default function HQBillingClient({
                 >
                   <option value="">None</option>
                   {(plans ?? []).map((p) => (
-                    <option key={p.id} value={p.name}>{p.name} — {formatTzs(p.price_monthly_tzs)}/mo</option>
+                    <option key={p.id} value={p.id}>{p.name} — {formatTzs(p.price_monthly_tzs)}/mo</option>
                   ))}
                 </select>
               </label>

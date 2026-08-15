@@ -58,6 +58,7 @@ export interface SyncResponse {
     trial_ends_at: string | null;
     grace_ends_at: string | null;
     last_synced_at: string | null;
+    locked_reason: string | null;
     updated_at: string;
   }>;
   batches: Array<{
@@ -80,6 +81,13 @@ export interface SyncResponse {
     requires_prescription: boolean;
     unit_desc: string | null;
     updated_at: string;
+  }>;
+  commands: Array<{
+    id: string;
+    branch_id: string;
+    command: string;
+    reason: string | null;
+    created_at: string;
   }>;
   serverTime: string;
   suspended?: boolean;
@@ -204,6 +212,7 @@ async function transitionBranchSubscription(
     const daysSinceSync = (now.getTime() - lastSync.getTime()) / 86400000;
     if (daysSinceSync > OFFLINE_LOCK_DAYS) {
       patch.subscription_status = "locked";
+      patch.locked_reason = "offline_lock";
       newStatus = "locked";
     }
   }
@@ -254,13 +263,20 @@ export async function getSyncData(since: string, accountId: string): Promise<Syn
   if (account.suspended_at) {
     const { data: lockedBranches } = await supabase
       .from("branches")
-      .select("id, name, account_id, lat, lng, subscription_status, trial_ends_at, grace_ends_at, last_synced_at, updated_at")
+      .select("id, name, account_id, lat, lng, subscription_status, trial_ends_at, grace_ends_at, last_synced_at, locked_reason, updated_at")
       .eq("account_id", account.id);
+
+    const { data: commands } = await supabase
+      .from("branch_commands")
+      .select("id, branch_id, command, reason, created_at")
+      .eq("account_id", account.id)
+      .eq("status", "pending");
 
     return {
       branches: (lockedBranches ?? []).map((b) => ({ ...b, subscription_status: "locked" })) as SyncResponse["branches"],
       batches: [],
       products: [],
+      commands: (commands ?? []) as SyncResponse["commands"],
       serverTime: new Date().toISOString(),
       suspended: true,
     };
@@ -269,7 +285,7 @@ export async function getSyncData(since: string, accountId: string): Promise<Syn
   // Fetch all branches for the account to evaluate subscription status
   const { data: allBranches } = await supabase
     .from("branches")
-    .select("id, name, account_id, lat, lng, subscription_status, trial_ends_at, grace_ends_at, last_synced_at, updated_at")
+    .select("id, name, account_id, lat, lng, subscription_status, trial_ends_at, grace_ends_at, last_synced_at, locked_reason, updated_at")
     .eq("account_id", account.id);
 
   // Also fetch branches modified since `since` for delta calculation
@@ -293,18 +309,19 @@ export async function getSyncData(since: string, accountId: string): Promise<Syn
       branch.grace_ends_at,
       branch.last_synced_at
     );
-    // Include if status changed OR if branch data was modified since `since`
     if (newStatus !== (branch.subscription_status ?? "active") || branchesModifiedSince.has(branch.id)) {
+      const lockedReason = (newStatus === "locked" && !branch.locked_reason) ? "auto_locked" : branch.locked_reason;
       transitionedBranches.push({
         ...branch,
         subscription_status: newStatus,
+        locked_reason: lockedReason ?? null,
       });
     }
   }
 
   const branchIds = (allBranches ?? []).map((b: { id: string }) => b.id);
 
-  const [batchesResult, productsResult] = await Promise.all([
+  const [batchesResult, productsResult, commandsResult] = await Promise.all([
     branchIds.length > 0
       ? supabase.from("batches").select("id, branch_id, product_id, batch_number, quantity, cost_price, sale_price, expiry_date, sync_version, updated_at").in("branch_id", branchIds).gt("updated_at", since)
       : Promise.resolve({ data: [] }),
@@ -312,12 +329,16 @@ export async function getSyncData(since: string, accountId: string): Promise<Syn
       .from("products")
       .select("id, generic_name, brand_name, category, requires_prescription, unit_desc, updated_at")
       .gt("updated_at", since),
+    branchIds.length > 0
+      ? supabase.from("branch_commands").select("id, branch_id, command, reason, created_at").in("branch_id", branchIds).eq("status", "pending")
+      : Promise.resolve({ data: [] }),
   ]);
 
   return {
     branches: transitionedBranches,
     batches: (batchesResult.data ?? []) as SyncResponse["batches"],
     products: (productsResult.data ?? []) as SyncResponse["products"],
+    commands: (commandsResult.data ?? []) as SyncResponse["commands"],
     serverTime: new Date().toISOString(),
   };
 }
@@ -341,12 +362,20 @@ export async function acknowledgeSync(
 ): Promise<{ error: string | null }> {
   const supabase = await createServiceClient();
 
-  const { error } = await supabase
-    .from("branches")
-    .update({ last_synced_at: syncedAt })
-    .eq("id", branchId)
-    .eq("account_id", accountId);
+  const [{ error: branchError }, { error: cmdError }] = await Promise.all([
+    supabase
+      .from("branches")
+      .update({ last_synced_at: syncedAt })
+      .eq("id", branchId)
+      .eq("account_id", accountId),
+    supabase
+      .from("branch_commands")
+      .update({ status: "acknowledged", acknowledged_at: new Date().toISOString() })
+      .eq("branch_id", branchId)
+      .eq("status", "pending"),
+  ]);
 
-  if (error) return { error: error.message };
+  if (branchError) return { error: branchError.message };
+  if (cmdError) return { error: cmdError.message };
   return { error: null };
 }

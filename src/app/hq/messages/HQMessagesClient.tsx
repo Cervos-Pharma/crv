@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { sendHQMessage, deleteHQMessage, type HQMessage } from "@/lib/actions/hq";
 import Toast from "@/components/Toast";
 
@@ -26,7 +26,26 @@ const SCOPE_LABELS: Record<string, string> = {
   branch: "Specific Branch",
 };
 
-export default function HQMessagesClient({ messages }: { messages: HQMessage[] }) {
+interface Account {
+  id: string;
+  name: string;
+}
+
+interface Branch {
+  id: string;
+  account_id: string;
+  name: string;
+}
+
+export default function HQMessagesClient({
+  messages,
+  accounts,
+  branches,
+}: {
+  messages: HQMessage[];
+  accounts: Account[];
+  branches: Branch[];
+}) {
   const [list, setList] = useState(messages);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
 
@@ -37,6 +56,12 @@ export default function HQMessagesClient({ messages }: { messages: HQMessage[] }
   const [targetAccountId, setTargetAccountId] = useState("");
   const [targetBranchId, setTargetBranchId] = useState("");
   const [sending, setSending] = useState(false);
+
+  const accountMap = useMemo(() => new Map(accounts.map((a) => [a.id, a.name])), [accounts]);
+  const filteredBranches = useMemo(
+    () => (targetAccountId ? branches.filter((b) => b.account_id === targetAccountId) : branches),
+    [branches, targetAccountId]
+  );
 
   async function handleSend() {
     if (!title.trim() || !body.trim()) {
@@ -117,34 +142,44 @@ export default function HQMessagesClient({ messages }: { messages: HQMessage[] }
                 <option value="all">Entire Network</option>
                 <option value="all_pharmacies">All Pharmacies</option>
                 <option value="all_suppliers">All Suppliers</option>
-                <option value="account">Specific Account ID</option>
-                <option value="branch">Specific Branch ID</option>
+                <option value="account">Specific Account</option>
+                <option value="branch">Specific Branch</option>
               </select>
             </div>
 
             {scope === "account" && (
               <div>
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Account ID</label>
-                <input
-                  type="text"
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Account</label>
+                <select
                   value={targetAccountId}
                   onChange={(e) => setTargetAccountId(e.target.value)}
-                  placeholder="account UUID"
-                  className="w-full px-3 py-2.5 rounded-md border border-outline-variant bg-surface-base text-sm focus:outline-none focus:border-primary font-mono"
-                />
+                  className="w-full px-3 py-2.5 rounded-md border border-outline-variant bg-surface-base text-sm focus:outline-none focus:border-primary"
+                >
+                  <option value="">Select account...</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
 
             {scope === "branch" && (
               <div>
-                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Branch ID</label>
-                <input
-                  type="text"
+                <label className="block text-xs font-semibold text-on-surface-variant mb-1">Branch</label>
+                <select
                   value={targetBranchId}
                   onChange={(e) => setTargetBranchId(e.target.value)}
-                  placeholder="branch UUID"
-                  className="w-full px-3 py-2.5 rounded-md border border-outline-variant bg-surface-base text-sm focus:outline-none focus:border-primary font-mono"
-                />
+                  className="w-full px-3 py-2.5 rounded-md border border-outline-variant bg-surface-base text-sm focus:outline-none focus:border-primary"
+                >
+                  <option value="">Select branch...</option>
+                  {filteredBranches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
 
@@ -204,8 +239,8 @@ export default function HQMessagesClient({ messages }: { messages: HQMessage[] }
                     <p className="font-body-md text-body-md opacity-80 whitespace-pre-wrap">{msg.body}</p>
                     <p className="font-mono text-xs opacity-50 mt-2">
                       {new Date(msg.created_at).toLocaleString()}
-                      {msg.target_account_id && ` · Account: ${msg.target_account_id.slice(0, 8)}...`}
-                      {msg.target_branch_id && ` · Branch: ${msg.target_branch_id.slice(0, 8)}...`}
+                      {msg.target_account_id && ` · Account: ${accountMap.get(msg.target_account_id) ?? msg.target_account_id.slice(0, 8)}...`}
+                      {msg.target_branch_id && ` · Branch: ${branches.find((b) => b.id === msg.target_branch_id)?.name ?? msg.target_branch_id.slice(0, 8)}...`}
                     </p>
                   </div>
                   <button

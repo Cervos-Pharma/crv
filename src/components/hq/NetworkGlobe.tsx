@@ -35,6 +35,7 @@ interface GlobeInstance {
   pointRadius(n: number): GlobeInstance;
   pointLabel(fn: (p: BranchPoint) => string): GlobeInstance;
   onGlobeReady(fn: () => void): GlobeInstance;
+  onError(fn: (err: string) => void): GlobeInstance;
   autoRotate(n: number): GlobeInstance;
   destroy(): void;
 }
@@ -157,9 +158,9 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
           const instance: GlobeInstance = GlobeFn({});
 
           instance
-            .globeImageUrl("//unpkg.com/three-globe/example/img/earth-blue-marble.jpg")
-            .bumpImageUrl("//unpkg.com/three-globe/example/img/earth-topology.png")
-            .backgroundImageUrl("//unpkg.com/three-globe/example/img/night-sky.png")
+            .globeImageUrl("https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg")
+            .bumpImageUrl("https://unpkg.com/three-globe/example/img/earth-topology.png")
+            .backgroundImageUrl("https://unpkg.com/three-globe/example/img/night-sky.png")
             .pointsData(validPoints)
             .pointLat("lat")
             .pointLng("lng")
@@ -173,14 +174,14 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
                 <span style="color:${STATUS_COLORS[p.status]};font-size:11px;font-weight:600">${p.status.toUpperCase().replace("_", " ")}</span>
               </div>`
             )
-
-          // Detect WebGL support
-          try {
-            instance.onGlobeReady(() => {
+            .onGlobeReady(() => {
               if (isMounted) {
                 instance.autoRotate(0.3);
                 globeInstanceRef.current = instance;
               }
+            })
+            .onError((err: string) => {
+              console.warn("Globe error:", err);
             });
           } catch {
             if (isMounted) {
@@ -275,7 +276,7 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
         ) : (
           <div
             ref={globeContainerRef}
-            className="w-full h-[420px] rounded-lg overflow-hidden border border-outline-variant"
+            className="w-full aspect-square max-h-[500px] rounded-lg overflow-hidden border border-outline-variant"
             style={{ background: "#0a0a1a" }}
           />
         )
@@ -293,7 +294,7 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
               </div>
             ))}
           </div>
-          <div ref={mapContainerRef} className="w-full h-[420px] rounded-lg overflow-hidden border border-outline-variant z-0" />
+          <div ref={mapContainerRef} className="w-full aspect-square max-h-[500px] rounded-lg overflow-hidden border border-outline-variant" style={{ zIndex: 0 }} />
         </div>
       )}
     </div>

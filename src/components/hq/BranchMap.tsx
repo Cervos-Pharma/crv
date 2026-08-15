@@ -118,7 +118,7 @@ export default function BranchMap({ branches }: Props) {
           <span className="font-body-sm text-on-surface-variant text-xs">Circle size = revenue</span>
         </div>
       </div>
-      <div ref={mapRef} className="w-full h-[420px] rounded-lg overflow-hidden border border-outline-variant z-0" />
+      <div ref={mapRef} className="w-full aspect-square max-h-[500px] rounded-lg overflow-hidden border border-outline-variant" style={{ zIndex: 0 }} />
     </div>
   );
 }

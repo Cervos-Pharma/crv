@@ -87,7 +87,12 @@ function AppRoutes() {
   const [dbReady, setDbReady] = useState(false)
 
   useEffect(() => {
-    initDb().then(() => setDbReady(true))
+    initDb()
+      .then(() => setDbReady(true))
+      .catch((err) => {
+        console.error("Database init failed:", err);
+        setDbReady(true);
+      });
   }, [])
 
   if (!dbReady || isLoading) {

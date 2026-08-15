@@ -43,6 +43,7 @@
         "displayLanguageSelector": false,
         "languages": ["English"]
       }
-    }
+    },
+    "devtools": true
   }
 }

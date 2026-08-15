@@ -1,4 +1,5 @@
-import { getHQMessages } from "@/lib/actions/hq";
+import { getHQMessages, getAllAccounts } from "@/lib/actions/hq";
+import { createServiceClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import HQSidebarServer from "@/components/HQSidebarServer";
@@ -9,7 +10,16 @@ export default async function HQMessagesPage() {
   const cookieStore = await cookies();
   if (!isValidHQToken(cookieStore.get(HQ_COOKIE_NAME)?.value)) redirect("/hq");
 
-  const { data: messages, error } = await getHQMessages();
+  const [{ data: messages, error }, { data: accounts }] = await Promise.all([
+    getHQMessages(),
+    getAllAccounts(),
+  ]);
+
+  const supabase = await createServiceClient();
+  const { data: branches } = await supabase
+    .from("branches")
+    .select("id, account_id, name")
+    .order("name");
 
   return (
     <div className="flex min-h-screen bg-surface-container-lowest">
@@ -31,7 +41,11 @@ export default async function HQMessagesPage() {
               <p className="font-body-md">Error loading messages: {error}</p>
             </div>
           ) : (
-            <HQMessagesClient messages={messages ?? []} />
+            <HQMessagesClient
+              messages={messages ?? []}
+              accounts={accounts ?? []}
+              branches={branches ?? []}
+            />
           )}
         </div>
       </main>
