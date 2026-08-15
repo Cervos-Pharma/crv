@@ -351,7 +351,10 @@ export default function DownloadClient({ releases }: DownloadClientProps) {
 
   const handleDownload = (releaseId: string) => {
     const release = Object.values(releases).find(r => r.id === releaseId);
-    if (release?.file_url) window.location.href = release.file_url;
+    if (!release?.file_url) return;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/app-releases/${release.file_url}`;
+    window.location.href = publicUrl;
   };
 
   // Capture card bounding rect for clip-path start values
