@@ -15,7 +15,6 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [blocked, setBlocked] = useState(false)
-  const [branchId, setBranchId] = useState<string | null>(null)
 
   useEffect(() => {
     loadOperators()
@@ -34,7 +33,6 @@ export default function Login() {
       return
     }
     const bid = JSON.parse(result[0].value)
-    setBranchId(bid)
     const ops = await fetchOperators(bid)
     if (ops.length === 0) {
       navigate('/onboarding')
@@ -45,16 +43,16 @@ export default function Login() {
 
   async function handlePinSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!selectedOperator || !branchId) return
+    if (!selectedOperator) return
     setLoading(true)
     setError('')
     try {
-      const op = await validateOperatorPin(branchId, pin)
+      const op = await validateOperatorPin(selectedOperator.id, pin)
       if (!op) {
         setError('Invalid PIN')
         return
       }
-      const sub = await fetchBranchSubscription(branchId)
+      const sub = await fetchBranchSubscription(selectedOperator.id)
       if (sub && (sub.subscription_status === 'inactive' || sub.subscription_status === 'past_due')) {
         if (sub.subscription_status === 'inactive' && sub.grace_ends_at) {
           const graceEnd = new Date(sub.grace_ends_at)
@@ -113,18 +111,19 @@ export default function Login() {
           <h1 className="text-3xl font-display font-bold text-on-surface mb-2">Cervos POS</h1>
           <p className="text-on-surface-variant">Select your profile and enter PIN</p>
         </div>
-        <div className="bg-surface-100 rounded-2xl border border-surface-300 p-8">
+
+        <div className="bg-surface-base border border-outline-variant rounded-xl p-8">
           {operators.length > 0 ? (
             <>
-              <h2 className="text-xl font-semibold text-white mb-6">Sign In</h2>
+              <h2 className="text-xl font-semibold text-on-surface mb-6">Sign In</h2>
               {error && (
-                <div className="mb-4 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-sm">
+                <div className="mb-4 p-4 bg-error/10 border border-error/20 rounded-lg text-error text-sm">
                   {error}
                 </div>
               )}
               <form onSubmit={handlePinSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">Operator</label>
+                  <label className="block text-sm font-semibold text-on-surface-variant mb-2">Operator</label>
                   <select
                     value={selectedOperator?.id || ''}
                     onChange={(e) => {
@@ -133,7 +132,7 @@ export default function Login() {
                       setPin('')
                     }}
                     required
-                    className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white focus:outline-none focus:border-accent"
+                    className="w-full px-4 py-3 bg-surface border border-outline-variant rounded-lg text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                   >
                     <option value="">Select operator</option>
                     {operators.map((op) => (
@@ -143,14 +142,14 @@ export default function Login() {
                 </div>
                 {selectedOperator && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">PIN</label>
+                    <label className="block text-sm font-semibold text-on-surface-variant mb-2">PIN</label>
                     <input
                       type="password"
                       value={pin}
                       onChange={(e) => setPin(e.target.value)}
                       required
                       maxLength={8}
-                      className="w-full px-4 py-3 bg-surface-base border border-outline-variant rounded-lg text-ink-deep placeholder-text-muted focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                       placeholder="Enter PIN"
                       autoFocus
                     />
@@ -159,15 +158,16 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={loading || !selectedOperator}
-                  className="w-full py-3 bg-accent hover:bg-accent2 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+                  className="w-full py-3 bg-primary text-white rounded-lg font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
                   {loading ? 'Signing in...' : 'Sign In'}
                 </button>
               </form>
             </>
           ) : (
-            <div className="text-center">
-              <p className="text-gray-400">Redirecting to onboarding...</p>
+            <div className="text-center py-8">
+              <span className="material-symbols-outlined text-4xl text-on-surface-variant animate-spin">progress_activity</span>
+              <p className="mt-2 text-on-surface-variant">Loading...</p>
             </div>
           )}
         </div>

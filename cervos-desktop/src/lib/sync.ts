@@ -256,3 +256,55 @@ export async function checkSubscriptionBlocked(): Promise<{ blocked: boolean; re
 
   return { blocked: false }
 }
+
+export async function processSyncQueue(): Promise<{ uploaded: number; failed: number }> {
+  if (!Ie) return { uploaded: 0, failed: 0 }
+
+  const queue = await Fe('SELECT * FROM sync_queue ORDER BY created_at ASC LIMIT 50')
+  let uploaded = 0
+  let failed = 0
+
+  for (const item of queue) {
+    try {
+      const payload = JSON.parse(item.payload)
+      const { table_name, row_id, operation } = item
+
+      if (operation === 'insert') {
+        const { error } = await Ie.from(table_name).insert(payload)
+        if (!error) {
+          await Fe('DELETE FROM sync_queue WHERE id = ?', [item.id])
+          uploaded++
+        } else {
+          failed++
+        }
+      } else if (operation === 'update') {
+        const { error } = await Ie.from(table_name).update(payload).eq('id', row_id)
+        if (!error) {
+          await Fe('DELETE FROM sync_queue WHERE id = ?', [item.id])
+          uploaded++
+        } else {
+          failed++
+        }
+      } else if (operation === 'delete') {
+        const { error } = await Ie.from(table_name).delete().eq('id', row_id)
+        if (!error) {
+          await Fe('DELETE FROM sync_queue WHERE id = ?', [item.id])
+          uploaded++
+        } else {
+          failed++
+        }
+      }
+    } catch {
+      failed++
+    }
+  }
+
+  if (uploaded > 0) {
+    await Pe(
+      `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      ['last_synced_at', JSON.stringify(new Date().toISOString())]
+    )
+  }
+
+  return { uploaded, failed }
+}
