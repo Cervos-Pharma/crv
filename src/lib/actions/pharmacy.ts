@@ -194,7 +194,7 @@ export async function getPharmacyAlerts(): Promise<{ data: PharmacyAlert[]; erro
       .select("id, branch_id, product_id, quantity, expiry_date, products(generic_name)")
       .in("branch_id", branchIds);
 
-    const batchList = (batches ?? []) as Array<{
+    const batchList = (batches ?? []) as unknown as Array<{
       id: string; branch_id: string; product_id: string; quantity: number;
       expiry_date: string | null; products: { generic_name: string } | null;
     }>;
@@ -257,7 +257,10 @@ export async function getPharmacyAlerts(): Promise<{ data: PharmacyAlert[]; erro
     // 2. CRITICAL — Out of stock
     const outOfStock = batchList.filter(b => b.quantity === 0);
     if (outOfStock.length > 0) {
-      const products = [...new Set(outOfStock.map(b => b.products?.generic_name).filter(Boolean))];
+      const products = [...new Set(outOfStock.map(b => {
+        const p = Array.isArray(b.products) ? b.products[0] : b.products;
+        return p?.generic_name;
+      }).filter(Boolean))];
       alerts.push({
         id: "pharm-oos",
         severity: "critical",
