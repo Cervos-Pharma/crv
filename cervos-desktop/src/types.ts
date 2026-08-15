@@ -6,6 +6,9 @@ export interface Product {
   requires_prescription: number
   barcode: string | null
   updated_at: string | null
+  default_expiry: string | null
+  default_cost_price: number | null
+  default_sale_price: number | null
 }
 
 export interface Batch {

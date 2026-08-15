@@ -4,6 +4,103 @@ import { qs } from "../lib/sync";
 import { useAuthStore } from "../lib/store";
 import type { Product, Batch } from "../types";
 
+function BarcodeScanner({ onScan, onClose }: { onScan: (barcode: string) => void; onClose: () => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    let animationId: number | null = null;
+
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+          scanFrame();
+        }
+      } catch (err) {
+        setError("Camera access denied. Please allow camera permissions.");
+      }
+    }
+
+    function scanFrame() {
+      if (!videoRef.current || !canvasRef.current) return;
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
+      if (!ctx || video.readyState !== video.HAVE_ENOUGH_DATA) {
+        animationId = requestAnimationFrame(scanFrame);
+        return;
+      }
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+
+      try {
+        const barcodeDetector = new window.BarcodeDetector({ formats: ["code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e", "qr_code"] });
+        barcodeDetector.detect(canvas).then((barcodes) => {
+          if (barcodes.length > 0) {
+            onScan(barcodes[0].rawValue);
+            return;
+          }
+        }).catch(() => {});
+      } catch {
+      }
+
+      animationId = requestAnimationFrame(scanFrame);
+    }
+
+    startCamera();
+    return () => {
+      if (animationId) cancelAnimationFrame(animationId);
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+    };
+  }, [onScan]);
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex flex-col z-50">
+      <div className="flex items-center justify-between p-4 text-white">
+        <h3 className="font-bold">Scan Barcode / QR</h3>
+        <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full">
+          <span className="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div className="flex-1 flex items-center justify-center relative">
+        <video ref={videoRef} className="w-full max-h-full object-cover" playsInline muted />
+        <canvas ref={canvasRef} className="hidden" />
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-64 h-40 border-2 border-white rounded-lg" />
+        </div>
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+            <div className="text-center text-white p-6">
+              <span className="material-symbols-outlined text-5xl text-error">error</span>
+              <p className="mt-2">{error}</p>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="p-4 text-center text-white/60 text-sm">
+        Point camera at barcode or QR code
+      </div>
+    </div>
+  );
+}
+
+declare global {
+  interface Window {
+    BarcodeDetector?: new (options: { formats: string[] }) => {
+      detect(source: ImageBitmapSource): Promise<Array<{ rawValue: string }>>;
+    };
+  }
+}
+
 interface CartItem {
   batch: Batch;
   product: Product;
@@ -24,6 +121,7 @@ export default function Pos() {
   const [tenderAmount, setTenderAmount] = useState("");
   const [discount, setDiscount] = useState("0");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -38,11 +136,21 @@ export default function Pos() {
   }
 
   function findProductByBarcode(barcodeStr: string): { product: Product; batch: Batch } | null {
-    const batch = batches.find((b) => b.id === barcodeStr || b.product_id === barcodeStr);
-    if (!batch) return null;
-    const product = products.find((p) => p.id === batch.product_id);
-    if (!product) return null;
-    return { product, batch };
+    if (!barcodeStr.trim()) return null;
+
+    const productByBarcode = products.find((p) => p.barcode === barcodeStr);
+    if (productByBarcode) {
+      const batch = batches.find((b) => b.product_id === productByBarcode.id);
+      if (batch) return { product: productByBarcode, batch };
+    }
+
+    const batchById = batches.find((b) => b.id === barcodeStr);
+    if (batchById) {
+      const product = products.find((p) => p.id === batchById.product_id);
+      if (product) return { product, batch: batchById };
+    }
+
+    return null;
   }
 
   function addToCart(item: CartItem) {
@@ -89,6 +197,19 @@ export default function Pos() {
       });
     }
     setSearchQuery("");
+  }
+
+  function handleBarcodeScanned(scannedBarcode: string) {
+    const found = findProductByBarcode(scannedBarcode);
+    if (found) {
+      addToCart({
+        batch: found.batch,
+        product: found.product,
+        quantity: 1,
+        unit_price: found.batch.sale_price,
+      });
+    }
+    setShowScanner(false);
   }
 
   function updateQuantity(batchId: string, delta: number) {

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../lib/hooks'
-import { Fe, Et } from '../lib/database'
-import { fetchOperators, validateOperatorPin, createOperator, fetchBranchSubscription } from '../lib/queries'
+import { Fe } from '../lib/database'
+import { fetchOperators, validateOperatorPin, fetchBranchSubscription } from '../lib/queries'
 import type { Operator } from '../types'
 import Logo from '../components/Logo'
 
@@ -14,9 +14,6 @@ export default function Login() {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [isCreatingAdmin, setIsCreatingAdmin] = useState(false)
-  const [newAdminName, setNewAdminName] = useState('')
-  const [newAdminPin, setNewAdminPin] = useState('')
   const [blocked, setBlocked] = useState(false)
   const [branchId, setBranchId] = useState<string | null>(null)
 
@@ -25,6 +22,12 @@ export default function Login() {
   }, [])
 
   async function loadOperators() {
+    const centreResult = await Fe("SELECT value FROM app_settings WHERE key = 'centre_name'")
+    if (centreResult.length === 0) {
+      navigate('/onboarding')
+      return
+    }
+
     const result = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
     if (result.length === 0) {
       navigate('/onboarding')
@@ -34,10 +37,10 @@ export default function Login() {
     setBranchId(bid)
     const ops = await fetchOperators(bid)
     if (ops.length === 0) {
-      setIsCreatingAdmin(true)
-    } else {
-      setOperators(ops)
+      navigate('/onboarding')
+      return
     }
+    setOperators(ops)
   }
 
   async function handlePinSubmit(e: React.FormEvent) {
@@ -77,38 +80,6 @@ export default function Login() {
     }
   }
 
-  async function handleCreateAdmin(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newAdminName.trim() || newAdminPin.length < 4) {
-      setError('Name required and PIN must be at least 4 digits')
-      return
-    }
-    setLoading(true)
-    setError('')
-    try {
-      let bid = branchId
-      if (!bid) {
-        bid = Et()
-        await Fe(
-          `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-          ['branch_id', JSON.stringify(bid)]
-        )
-      }
-      const op = await createOperator({
-        branch_id: bid,
-        name: newAdminName.trim(),
-        pin: newAdminPin,
-        role: 'admin',
-      })
-      setOperator(op)
-      navigate('/')
-    } catch (err: any) {
-      setError(err.message || 'Failed to create admin')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   if (blocked) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface p-4">
@@ -132,62 +103,6 @@ export default function Login() {
     )
   }
 
-  if (isCreatingAdmin) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-surface p-4">
-        <div className="w-full max-w-md">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 mx-auto mb-4">
-              <Logo size="lg" className="mx-auto" />
-            </div>
-            <h1 className="text-3xl font-display font-bold text-on-surface mb-2">Cervos Pharmacy</h1>
-            <p className="text-on-surface-variant">Create your admin account to get started</p>
-          </div>
-          <div className="bg-surface-100 rounded-2xl border border-surface-300 p-8">
-            <h2 className="text-xl font-semibold text-white mb-6">Create Admin</h2>
-            {error && (
-              <div className="mb-4 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-sm">
-                {error}
-              </div>
-            )}
-            <form onSubmit={handleCreateAdmin} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Name</label>
-                <input
-                  type="text"
-                  value={newAdminName}
-                  onChange={(e) => setNewAdminName(e.target.value)}
-                  required
-                  className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
-                  placeholder="Your name"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">PIN (at least 4 digits)</label>
-                <input
-                  type="password"
-                  value={newAdminPin}
-                  onChange={(e) => setNewAdminPin(e.target.value)}
-                  required
-                  minLength={4}
-                  className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
-                  placeholder="----"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 bg-accent hover:bg-accent2 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-              >
-                {loading ? 'Creating...' : 'Create Admin'}
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-surface p-4">
       <div className="w-full max-w-md">
@@ -195,7 +110,7 @@ export default function Login() {
           <div className="w-16 h-16 mx-auto mb-4">
             <Logo size="lg" className="mx-auto" />
           </div>
-          <h1 className="text-3xl font-display font-bold text-on-surface mb-2">Cervos Pharmacy</h1>
+          <h1 className="text-3xl font-display font-bold text-on-surface mb-2">Cervos POS</h1>
           <p className="text-on-surface-variant">Select your profile and enter PIN</p>
         </div>
         <div className="bg-surface-100 rounded-2xl border border-surface-300 p-8">
@@ -235,7 +150,7 @@ export default function Login() {
                       onChange={(e) => setPin(e.target.value)}
                       required
                       maxLength={8}
-                      className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
+                      className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-ink-deep placeholder-gray-500 focus:outline-none focus:border-primary"
                       placeholder="----"
                       autoFocus
                     />
@@ -252,7 +167,7 @@ export default function Login() {
             </>
           ) : (
             <div className="text-center">
-              <p className="text-gray-400">No operators found. Contact your administrator.</p>
+              <p className="text-gray-400">Redirecting to onboarding...</p>
             </div>
           )}
         </div>

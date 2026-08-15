@@ -1,8 +1,105 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Fe, Pe, Et } from "../lib/database";
 import { PHARMACY_CATEGORIES } from "../lib/branding";
 import { useAuthStore } from "../lib/store";
 import type { Product, Batch } from "../types";
+
+function BarcodeScanner({ onScan, onClose }: { onScan: (barcode: string) => void; onClose: () => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    let animationId: number | null = null;
+
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+          scanFrame();
+        }
+      } catch (err) {
+        setError("Camera access denied. Please allow camera permissions.");
+      }
+    }
+
+    function scanFrame() {
+      if (!videoRef.current || !canvasRef.current) return;
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
+      if (!ctx || video.readyState !== video.HAVE_ENOUGH_DATA) {
+        animationId = requestAnimationFrame(scanFrame);
+        return;
+      }
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+
+      try {
+        const barcodeDetector = new window.BarcodeDetector({ formats: ["code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e", "qr_code"] });
+        barcodeDetector.detect(canvas).then((barcodes) => {
+          if (barcodes.length > 0) {
+            onScan(barcodes[0].rawValue);
+            return;
+          }
+        }).catch(() => {});
+      } catch {
+      }
+
+      animationId = requestAnimationFrame(scanFrame);
+    }
+
+    startCamera();
+    return () => {
+      if (animationId) cancelAnimationFrame(animationId);
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+    };
+  }, [onScan]);
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex flex-col z-[100]">
+      <div className="flex items-center justify-between p-4 text-white">
+        <h3 className="font-bold">Scan Barcode / QR</h3>
+        <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full">
+          <span className="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div className="flex-1 flex items-center justify-center relative">
+        <video ref={videoRef} className="w-full max-h-full object-cover" playsInline muted />
+        <canvas ref={canvasRef} className="hidden" />
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-64 h-40 border-2 border-white rounded-lg" />
+        </div>
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+            <div className="text-center text-white p-6">
+              <span className="material-symbols-outlined text-5xl text-error">error</span>
+              <p className="mt-2">{error}</p>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="p-4 text-center text-white/60 text-sm">
+        Point camera at barcode or QR code
+      </div>
+    </div>
+  );
+}
+
+declare global {
+  interface Window {
+    BarcodeDetector?: new (options: { formats: string[] }) => {
+      detect(source: ImageBitmapSource): Promise<Array<{ rawValue: string }>>;
+    };
+  }
+}
 
 export default function Inventory() {
   const { isAdmin, permissions } = useAuthStore()
@@ -259,20 +356,23 @@ export default function Inventory() {
           onSave={async (productData) => {
             if (editingProduct) {
               await Pe(
-                `UPDATE products SET generic_name = ?, brand_name = ?, category = ?, requires_prescription = ?, barcode = ? WHERE id = ?`,
+                `UPDATE products SET generic_name = ?, brand_name = ?, category = ?, requires_prescription = ?, barcode = ?, default_expiry = ?, default_cost_price = ?, default_sale_price = ? WHERE id = ?`,
                 [
                   productData.generic_name,
                   productData.brand_name,
                   productData.category,
                   productData.requires_prescription ? 1 : 0,
                   productData.barcode,
+                  productData.default_expiry || null,
+                  productData.default_cost_price || null,
+                  productData.default_sale_price || null,
                   editingProduct.id,
                 ]
               );
             } else {
               const id = Et();
               await Pe(
-                `INSERT INTO products (id, generic_name, brand_name, category, requires_prescription, barcode) VALUES (?,?,?,?,?,?)`,
+                `INSERT INTO products (id, generic_name, brand_name, category, requires_prescription, barcode, default_expiry, default_cost_price, default_sale_price) VALUES (?,?,?,?,?,?,?,?,?)`,
                 [
                   id,
                   productData.generic_name,
@@ -280,6 +380,9 @@ export default function Inventory() {
                   productData.category,
                   productData.requires_prescription ? 1 : 0,
                   productData.barcode,
+                  productData.default_expiry || null,
+                  productData.default_cost_price || null,
+                  productData.default_sale_price || null,
                 ]
               );
             }
@@ -302,6 +405,9 @@ interface ProductModalProps {
     category: string;
     requires_prescription: boolean;
     barcode: string;
+    default_expiry?: string;
+    default_cost_price?: number;
+    default_sale_price?: number;
   }) => void;
 }
 
@@ -313,6 +419,10 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
     !!product?.requires_prescription
   );
   const [barcode, setBarcode] = useState(product?.barcode || "");
+  const [defaultExpiry, setDefaultExpiry] = useState(product?.default_expiry || "");
+  const [defaultCostPrice, setDefaultCostPrice] = useState(product?.default_cost_price?.toString() || "");
+  const [defaultSalePrice, setDefaultSalePrice] = useState(product?.default_sale_price?.toString() || "");
+  const [showScanner, setShowScanner] = useState(false);
 
   const inputClass =
     "w-full px-3 py-2.5 rounded-md border border-outline-variant bg-surface-base text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary";
@@ -326,73 +436,131 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
       category,
       requires_prescription: requiresPrescription,
       barcode: barcode.trim(),
+      default_expiry: defaultExpiry || undefined,
+      default_cost_price: defaultCostPrice ? parseFloat(defaultCostPrice) : undefined,
+      default_sale_price: defaultSalePrice ? parseFloat(defaultSalePrice) : undefined,
     });
   }
 
+  function handleBarcodeScanned(scannedBarcode: string) {
+    setBarcode(scannedBarcode);
+    setShowScanner(false);
+  }
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-surface-base rounded-2xl shadow-xl w-full max-w-md p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="font-headline text-xl font-bold text-on-surface">
-            {product ? "Edit Product" : "Add Product"}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-1 rounded hover:bg-outline-variant transition-colors"
-          >
-            <span className="material-symbols-outlined">close</span>
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className={labelClass}>Generic Name *</label>
-            <input
-              type="text"
-              value={genericName}
-              onChange={(e) => setGenericName(e.target.value)}
-              className={inputClass}
-              placeholder="e.g. Paracetamol"
-              required
-            />
-          </div>
-
-          <div>
-            <label className={labelClass}>Brand Name</label>
-            <input
-              type="text"
-              value={brandName}
-              onChange={(e) => setBrandName(e.target.value)}
-              className={inputClass}
-              placeholder="e.g. Panadol"
-            />
-          </div>
-
-          <div>
-            <label className={labelClass}>Category</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className={inputClass}
+    <>
+      {showScanner && (
+        <BarcodeScanner onScan={handleBarcodeScanned} onClose={() => setShowScanner(false)} />
+      )}
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-surface-base rounded-2xl shadow-xl w-full max-w-md p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="font-headline text-xl font-bold text-on-surface">
+              {product ? "Edit Product" : "Add Product"}
+            </h2>
+            <button
+              onClick={onClose}
+              className="p-1 rounded hover:bg-outline-variant transition-colors"
             >
-              <option value="">Select category</option>
-              {PHARMACY_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
+              <span className="material-symbols-outlined">close</span>
+            </button>
           </div>
 
-          <div>
-            <label className={labelClass}>Barcode</label>
-            <input
-              type="text"
-              value={barcode}
-              onChange={(e) => setBarcode(e.target.value)}
-              className={inputClass}
-              placeholder="e.g. 1234567890123"
-            />
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className={labelClass}>Generic Name *</label>
+              <input
+                type="text"
+                value={genericName}
+                onChange={(e) => setGenericName(e.target.value)}
+                className={inputClass}
+                placeholder="e.g. Paracetamol"
+                required
+              />
+            </div>
+
+            <div>
+              <label className={labelClass}>Brand Name</label>
+              <input
+                type="text"
+                value={brandName}
+                onChange={(e) => setBrandName(e.target.value)}
+                className={inputClass}
+                placeholder="e.g. Panadol"
+              />
+            </div>
+
+            <div>
+              <label className={labelClass}>Category</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">Select category</option>
+                {PHARMACY_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className={labelClass}>Barcode</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={barcode}
+                  onChange={(e) => setBarcode(e.target.value)}
+                  className={inputClass}
+                  placeholder="e.g. 1234567890123"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowScanner(true)}
+                  className="px-3 py-2.5 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                  title="Scan barcode"
+                >
+                  <span className="material-symbols-outlined">qr_code_scanner</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className={labelClass}>Default Expiry</label>
+                <input
+                  type="date"
+                  value={defaultExpiry}
+                  onChange={(e) => setDefaultExpiry(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Cost/Unit</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={defaultCostPrice}
+                  onChange={(e) => setDefaultCostPrice(e.target.value)}
+                  className={inputClass}
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+              <label className={labelClass}>Sell/Unit</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={defaultSalePrice}
+                onChange={(e) => setDefaultSalePrice(e.target.value)}
+                className={inputClass}
+                placeholder="0.00"
+              />
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
