@@ -65,8 +65,28 @@ function OnboardingRoute() {
     const check = async () => {
       try {
         await initDb()
-        const result = await Fe("SELECT value FROM app_settings WHERE key = 'centre_name'")
-        setIsOnboarded(result.length > 0)
+
+        // Check if centre_name exists AND there's at least one operator
+        const centreResult = await Fe("SELECT value FROM app_settings WHERE key = 'centre_name'")
+        if (centreResult.length === 0) {
+          setIsOnboarded(false)
+          return
+        }
+
+        // Centre exists - check if there's a branch_id with operators
+        const branchResult = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
+        if (branchResult.length > 0) {
+          const branchId = JSON.parse(branchResult[0].value)
+          const ops = await Fe('SELECT id FROM operators WHERE branch_id = ?', [branchId])
+          if (ops.length > 0) {
+            // Centre configured AND has operators - go to login
+            setIsOnboarded(true)
+            return
+          }
+        }
+
+        // Centre exists but no operators - show onboarding to create admin
+        setIsOnboarded(false)
       } catch (err) {
         console.error('OnboardingRoute check failed:', err)
         setIsOnboarded(false)
