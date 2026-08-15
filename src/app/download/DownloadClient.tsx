@@ -350,11 +350,7 @@ export default function DownloadClient({ releases }: DownloadClientProps) {
   useEffect(() => { setOs(detectOS()); }, []);
 
   const handleDownload = (releaseId: string) => {
-    const release = Object.values(releases).find(r => r.id === releaseId);
-    if (!release?.file_url) return;
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const publicUrl = `${supabaseUrl}/storage/v1/object/public/app-releases/${release.file_url}`;
-    window.location.href = publicUrl;
+    window.location.href = `/api/downloads/${releaseId}/redirect`;
   };
 
   // Capture card bounding rect for clip-path start values

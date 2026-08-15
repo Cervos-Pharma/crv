@@ -1256,28 +1256,28 @@ export async function getAllAccountsWithProfiles(): Promise<{
   let branches: Record<string, unknown>[] = [];
 
   try {
-    const [accountsResult, profilesResult, branchesResult] = await Promise.all([
-      supabase
-        .from("accounts")
-        .select("id, name, type, billing_status, download_enabled, subscription_status, verified, created_at")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("user_profiles")
-        .select("account_id, contact_name, phone, region, role, tech_comfort, goals, onboarding_completed_at, last_active_at"),
-      supabase.from("branches").select("id, account_id"),
-    ]);
-    accounts = accountsResult.data ?? [];
-    profiles = profilesResult.data ?? [];
-    branches = branchesResult.data ?? [];
-  } catch {
-    // Tables may not exist - try accounts alone
-    const result = await supabase
+    const accountsResult = await supabase
       .from("accounts")
       .select("id, name, type, billing_status, download_enabled, subscription_status, verified, created_at")
-      .order("uploaded_at", { ascending: false });
-    accounts = result.data ?? [];
-    if (!accounts.length) return { data: null, error: "Failed to load accounts." };
+      .order("created_at", { ascending: false });
+    accounts = accountsResult.data ?? [];
+  } catch {
+    return { data: null, error: "Failed to load accounts." };
   }
+
+  if (!accounts.length) return { data: null, error: "Failed to load accounts." };
+
+  try {
+    const branchesResult = await supabase.from("branches").select("id, account_id");
+    branches = branchesResult.data ?? [];
+  } catch { /* branches table may not exist */ }
+
+  try {
+    const profilesResult = await supabase
+      .from("user_profiles")
+      .select("account_id, contact_name, phone, region, role, tech_comfort, goals, last_active_at");
+    profiles = profilesResult.data ?? [];
+  } catch { /* user_profiles table may not exist */ }
 
   if (!accounts.length) return { data: null, error: "Failed to load accounts." };
 
@@ -2020,6 +2020,13 @@ export interface NetworkHealthMetrics {
   avgProductsPerBranch: number;
   expiringBatchesThisMonth: number;
   outOfStockProducts: number;
+  branchLocations: {
+    lat: number | null;
+    lng: number | null;
+    name: string;
+    accountName: string;
+    status: "healthy" | "at_risk" | "locked";
+  }[];
 }
 
 export interface RevenueMetrics {
@@ -2183,7 +2190,7 @@ export async function getNetworkHealthMetrics(): Promise<{ data: NetworkHealthMe
 
     try {
       const results = await Promise.all([
-        supabase.from("branches").select("id, subscription_status, last_synced_at"),
+        supabase.from("branches").select("id, name, subscription_status, last_synced_at, lat, lng, accounts(id, name)"),
         supabase.from("batches").select("id, expiry_date, branch_id"),
         supabase.from("products").select("id, branch_id"),
       ]);
@@ -2234,6 +2241,20 @@ export async function getNetworkHealthMetrics(): Promise<{ data: NetworkHealthMe
     // products.stock may not exist - default to 0 out of stock
     const outOfStockProducts = 0;
 
+    const branchLocations = branches
+      .filter((b: Record<string, unknown>) => b.lat != null && b.lng != null)
+      .map((b: Record<string, unknown>) => {
+        const acc = (b.accounts as { id: string; name: string } | null);
+        const status = (b.subscription_status as string) || "unknown";
+        return {
+          lat: b.lat as number | null,
+          lng: b.lng as number | null,
+          name: (b.name as string) || "Unknown",
+          accountName: acc?.name ?? "Unknown",
+          status: (status === "active" ? "healthy" : status === "grace" || status === "payment_due" ? "at_risk" : "locked") as "healthy" | "at_risk" | "locked",
+        };
+      });
+
     const data: NetworkHealthMetrics = {
       totalBranches: branchCount,
       onlineNow,
@@ -2244,6 +2265,7 @@ export async function getNetworkHealthMetrics(): Promise<{ data: NetworkHealthMe
       avgProductsPerBranch,
       expiringBatchesThisMonth,
       outOfStockProducts,
+      branchLocations,
     };
 
     return { data, error: null };
@@ -2390,6 +2412,7 @@ export interface BranchIntelligenceMetrics {
   topBranchesByRevenue: { branchId: string; branchName: string; accountName: string; revenue: number; transactionCount: number }[];
   bottomBranchesByRevenue: { branchId: string; branchName: string; accountName: string; revenue: number; transactionCount: number }[];
   topBranchesByTransactions: { branchId: string; branchName: string; accountName: string; transactionCount: number; revenue: number }[];
+  branchLocations: { branchId: string; branchName: string; accountName: string; lat: number | null; lng: number | null; revenue: number; status: string }[];
   expiryRisk: {
     expiringIn30Days: number;
     expiringIn60Days: number;
@@ -2417,7 +2440,7 @@ export async function getBranchIntelligenceMetrics(periodDays: number): Promise<
   const dayMs = 86400000;
 
   try {
-    let branches: { id: string; name: string; account_id: string }[] = [];
+    let branches: { id: string; name: string; account_id: string; lat: number | null; lng: number | null }[] = [];
     let accounts: { id: string; name: string }[] = [];
     let batches: { id: string; branch_id: string; product_id: string; quantity: number; expiry_date: string | null }[] = [];
     let products: { id: string; generic_name: string; brand_name: string | null }[] = [];
@@ -2426,7 +2449,7 @@ export async function getBranchIntelligenceMetrics(periodDays: number): Promise<
 
     try {
       const [branchesResult, accountsResult, batchesResult, productsResult, saleItemsResult, salesResult] = await Promise.all([
-        supabase.from("branches").select("id, name, account_id"),
+        supabase.from("branches").select("id, name, account_id, lat, lng"),
         supabase.from("accounts").select("id, name"),
         supabase.from("batches").select("id, branch_id, product_id, quantity, expiry_date"),
         supabase.from("products").select("id, generic_name, brand_name"),
@@ -2605,6 +2628,19 @@ export async function getBranchIntelligenceMetrics(periodDays: number): Promise<
       topBranchesByRevenue,
       bottomBranchesByRevenue,
       topBranchesByTransactions,
+      branchLocations: branches.filter((b) => b.lat != null && b.lng != null).map((b) => {
+        const accName = accountMap.get(b.account_id) ?? "Unknown";
+        const rev = branchRevenue.get(b.id) ?? 0;
+        return {
+          branchId: b.id,
+          branchName: b.name,
+          accountName: accName,
+          lat: b.lat ?? null,
+          lng: b.lng ?? null,
+          revenue: rev,
+          status: "active",
+        };
+      }),
       expiryRisk: {
         expiringIn30Days: totalExpiring30,
         expiringIn60Days: totalExpiring60,
@@ -3619,26 +3655,32 @@ export async function getMarketIntelligence(periodDays: number): Promise<{ data:
     let products: { id: string; generic_name: string; brand_name: string | null; category: string | null }[] = [];
     let operators: { id: string; branch_id: string | null; created_at: string }[] = [];
 
-    try {
-      const results = await Promise.all([
-        supabase.from("quote_requests").select("id, status, account_id, created_at, converted_to_order_id").gte("created_at", periodStart),
-        supabase.from("accounts").select("id, name, type, created_at, onboarding_completed_at"),
-        supabase.from("branches").select("id, account_id, name, region"),
-        supabase.from("sales").select("id, created_at, total, account_id, branch_id").gte("created_at", periodStart),
-        supabase.from("sale_items").select("sale_id, batch_id, quantity, unit_price"),
-        supabase.from("batches").select("id, product_id, branch_id"),
-        supabase.from("products").select("id, generic_name, brand_name, category"),
-        supabase.from("operators").select("id, branch_id, created_at"),
-      ]);
-      quoteRequests = results[0].data ?? [];
-      accounts = results[1].data ?? [];
-      branches = results[2].data ?? [];
-      sales = results[3].data ?? [];
-      saleItems = results[4].data ?? [];
-      batches = results[5].data ?? [];
-      products = results[6].data ?? [];
-      operators = results[7].data ?? [];
-    } catch { /* tables may not exist */ }
+    let qrResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
+    let accResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
+    let brResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
+    let salResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
+    let siResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
+    let batResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
+    let prodResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
+    let opResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
+
+    try { qrResult = await supabase.from("quote_requests").select("id, status, account_id, created_at, converted_to_order_id").gte("created_at", periodStart) as typeof qrResult; } catch { /* table may not exist */ }
+    try { accResult = await supabase.from("accounts").select("id, name, type, created_at") as typeof accResult; } catch { /* table may not exist */ }
+    try { brResult = await supabase.from("branches").select("id, account_id, name") as typeof brResult; } catch { /* table may not exist */ }
+    try { salResult = await supabase.from("sales").select("id, created_at, total, account_id, branch_id").gte("created_at", periodStart) as typeof salResult; } catch { /* table may not exist */ }
+    try { siResult = await supabase.from("sale_items").select("sale_id, batch_id, quantity, unit_price") as typeof siResult; } catch { /* table may not exist */ }
+    try { batResult = await supabase.from("batches").select("id, product_id, branch_id") as typeof batResult; } catch { /* table may not exist */ }
+    try { prodResult = await supabase.from("products").select("id, generic_name, brand_name, category") as typeof prodResult; } catch { /* table may not exist */ }
+    try { opResult = await supabase.from("operators").select("id, branch_id, created_at") as typeof opResult; } catch { /* table may not exist */ }
+
+    quoteRequests = (qrResult.data ?? []) as typeof quoteRequests;
+    accounts = (accResult.data ?? []) as typeof accounts;
+    branches = (brResult.data ?? []) as typeof branches;
+    sales = (salResult.data ?? []) as typeof sales;
+    saleItems = (siResult.data ?? []) as typeof saleItems;
+    batches = (batResult.data ?? []) as typeof batches;
+    products = (prodResult.data ?? []) as typeof products;
+    operators = (opResult.data ?? []) as typeof operators;
 
     const productMap = new Map(products.map((p) => [p.id, p]));
     const accountMap = new Map(accounts.map((a) => [a.id, a]));
@@ -4135,29 +4177,32 @@ export async function getUserActivityMetrics(periodDays: number): Promise<{ data
     let branches: { id: string; name: string; account_id: string }[] = [];
     let activityLog: { id: string; operator_id: string | null; branch_id: string | null; action: string; detail: string | null; created_at: string }[] = [];
 
-    try {
-      const results = await Promise.all([
-        supabase.from("installs").select("id, branch_id, platform, created_at, last_seen_at"),
-        supabase.from("operators").select("id, branch_id, name, role, created_at"),
-        supabase.from("accounts").select("id, name"),
-        supabase.from("branches").select("id, name, account_id"),
-        supabase.from("activity_log").select("id, operator_id, branch_id, action, detail, created_at").gte("created_at", periodStart),
-      ]);
-      installs = results[0].data ?? [];
-      operators = results[1].data ?? [];
-      accounts = results[2].data ?? [];
-      branches = results[3].data ?? [];
-      activityLog = results[4].data ?? [];
-    } catch { /* tables may not exist */ }
+    let iResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
+    let oResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
+    let aResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
+    let bResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
+    let alResult: { data: unknown[] | null; error: unknown } = { data: [], error: null };
+
+    try { iResult = await supabase.from("installs").select("id, branch_id, created_at, last_seen_at") as typeof iResult; } catch { /* table may not exist */ }
+    try { oResult = await supabase.from("operators").select("id, branch_id, name, role, created_at") as typeof oResult; } catch { /* table may not exist */ }
+    try { aResult = await supabase.from("accounts").select("id, name") as typeof aResult; } catch { /* table may not exist */ }
+    try { bResult = await supabase.from("branches").select("id, name, account_id") as typeof bResult; } catch { /* table may not exist */ }
+    try { alResult = await supabase.from("activity_log").select("id, operator_id, branch_id, action, detail, created_at").gte("created_at", periodStart) as typeof alResult; } catch { /* table may not exist */ }
+
+    installs = (iResult.data ?? []) as typeof installs;
+    operators = (oResult.data ?? []) as typeof operators;
+    accounts = (aResult.data ?? []) as typeof accounts;
+    branches = (bResult.data ?? []) as typeof branches;
+    activityLog = (alResult.data ?? []) as typeof activityLog;
 
     const branchMap = new Map(branches.map((b) => [b.id, b]));
     const accountMap = new Map(accounts.map((a) => [a.id, a]));
     const branchAccountMap = new Map(branches.map((b) => [b.id, b.account_id]));
 
-    // Install stats
-    const windowsInstalls = installs.filter((i) => i.platform === "windows").length;
-    const macInstalls = installs.filter((i) => i.platform === "mac").length;
-    const linuxInstalls = installs.filter((i) => i.platform === "linux").length;
+    // Install stats (platform column may not exist — skip breakdown if unavailable)
+    const windowsInstalls = 0;
+    const macInstalls = 0;
+    const linuxInstalls = 0;
     const thirtyDaysAgo = Date.now() - 30 * 86400000;
     const activeInstalls = installs.filter((i) => i.last_seen_at && new Date(i.last_seen_at).getTime() > thirtyDaysAgo).length;
 

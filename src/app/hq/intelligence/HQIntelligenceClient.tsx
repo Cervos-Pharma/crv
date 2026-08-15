@@ -38,6 +38,10 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import dynamic from "next/dynamic";
+
+const BranchMap = dynamic(() => import("@/components/hq/BranchMap"), { ssr: false });
+const NetworkGlobe = dynamic(() => import("@/components/hq/NetworkGlobe"), { ssr: false });
 
 interface Props {
   overview: IntelligenceOverview | null;
@@ -707,6 +711,11 @@ export default function HQIntelligenceClient({
           ))}
         </div>
 
+        <div className="bg-surface-base border border-outline-variant p-6 mb-8">
+          <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-4">3D Network View</p>
+          <NetworkGlobe networkHealth={networkHealth} branchLocations={networkHealth.branchLocations.map((b) => ({ lat: b.lat ?? 0, lng: b.lng ?? 0, name: b.name, accountName: b.accountName, status: b.status }))} />
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <div className="bg-surface-base border border-outline-variant p-6">
             <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-4">Status Distribution</p>
@@ -794,6 +803,13 @@ export default function HQIntelligenceClient({
             </div>
           ))}
         </div>
+
+        {bi.branchLocations.length > 0 && (
+          <div className="bg-surface-base border border-outline-variant p-6 mb-8">
+            <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider mb-4">Branch Locations Map</p>
+            <BranchMap branches={bi.branchLocations} />
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <div className="bg-surface-base border border-outline-variant p-6">
@@ -1456,6 +1472,34 @@ export default function HQIntelligenceClient({
     }
   }
 
+  async function handleExportHtml() {
+    setGeneratingReport(true);
+    try {
+      const res = await fetch("/api/reports/intelligence/html", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sections: reportSections }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Unknown error" }));
+        setToast({ message: err.error ?? "Export failed", type: "error" });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `cervos-intel-${new Date().toISOString().slice(0, 10)}.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setToast({ message: "Interactive HTML report downloaded.", type: "success" });
+    } catch (e) {
+      setToast({ message: e instanceof Error ? e.message : "Export failed", type: "error" });
+    } finally {
+      setGeneratingReport(false);
+    }
+  }
+
   function renderReports() {
     const ALL_SECTIONS = [
       { key: "summary", label: "Network Summary" },
@@ -1509,6 +1553,13 @@ export default function HQIntelligenceClient({
             className="px-6 py-3 rounded-md bg-primary text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             {generatingReport ? "Generating..." : "Generate & Download Report"}
+          </button>
+          <button
+            onClick={handleExportHtml}
+            disabled={generatingReport || reportSections.length === 0}
+            className="px-6 py-3 rounded-md border border-primary text-primary font-semibold hover:bg-primary/5 transition-colors disabled:opacity-50"
+          >
+            {generatingReport ? "Exporting..." : "Export as Interactive HTML"}
           </button>
         </div>
 
