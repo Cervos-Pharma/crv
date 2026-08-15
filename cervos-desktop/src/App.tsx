@@ -16,6 +16,8 @@ import Records from './pages/Records'
 import Alerts from './pages/Alerts'
 import { initDb } from './lib/database'
 import { Fe } from './lib/database'
+import { startAutoSync, stopAutoSync, checkSubscriptionBlocked } from './lib/sync'
+import { useSyncStore } from './lib/store'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
@@ -113,6 +115,8 @@ function OnboardingRoute() {
 function AppRoutes() {
   const { isAuthenticated, isLoading } = useAuth()
   const [dbReady, setDbReady] = useState(false)
+  const blocked = useSyncStore((s) => s.blocked)
+  const blockReason = useSyncStore((s) => s.blockReason)
 
   useEffect(() => {
     initDb()
@@ -123,6 +127,15 @@ function AppRoutes() {
       });
   }, [])
 
+  useEffect(() => {
+    if (!dbReady) return
+    startAutoSync()
+    checkSubscriptionBlocked()
+      .then((b) => useSyncStore.getState().setBlocked(b.blocked, b.reason ?? null))
+      .catch(() => {})
+    return () => stopAutoSync()
+  }, [dbReady])
+
   if (!dbReady || isLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-surface">
@@ -132,22 +145,41 @@ function AppRoutes() {
   }
 
   return (
-    <Routes>
-      <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
-      <Route path="/onboarding" element={<OnboardingRoute />} />
-      <Route path="/" element={<ProtectedRoute><Shell /></ProtectedRoute>}>
-        <Route index element={<Dashboard />} />
-        <Route path="pos" element={<Pos />} />
-        <Route path="inventory" element={<Inventory />} />
-        <Route path="settings" element={<Settings />} />
-        <Route path="reports" element={<AdminRoute><Reports /></AdminRoute>} />
-        <Route path="users" element={<AdminRoute><Users /></AdminRoute>} />
-        <Route path="records" element={<AdminRoute><Records /></AdminRoute>} />
-        <Route path="alerts" element={<Alerts />} />
-        <Route path="marketplace" element={<Marketplace />} />
-        <Route path="subscription" element={<Subscription />} />
-      </Route>
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
+        <Route path="/onboarding" element={<OnboardingRoute />} />
+        <Route path="/" element={<ProtectedRoute><Shell /></ProtectedRoute>}>
+          <Route index element={<Dashboard />} />
+          <Route path="pos" element={<Pos />} />
+          <Route path="inventory" element={<Inventory />} />
+          <Route path="settings" element={<Settings />} />
+          <Route path="reports" element={<AdminRoute><Reports /></AdminRoute>} />
+          <Route path="users" element={<AdminRoute><Users /></AdminRoute>} />
+          <Route path="records" element={<AdminRoute><Records /></AdminRoute>} />
+          <Route path="alerts" element={<Alerts />} />
+          <Route path="marketplace" element={<Marketplace />} />
+          <Route path="subscription" element={<Subscription />} />
+        </Route>
+      </Routes>
+      {blocked && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-6">
+          <div className="max-w-md w-full bg-surface-base rounded-2xl shadow-xl p-8 text-center">
+            <span className="material-symbols-outlined text-5xl text-error">lock</span>
+            <h2 className="mt-4 font-headline text-xl font-bold text-on-surface">
+              Terminal Locked
+            </h2>
+            <p className="mt-2 text-sm text-on-surface-variant">
+              {blockReason || "This branch has been locked by HQ or its subscription is inactive."}
+            </p>
+            <p className="mt-4 text-xs text-on-surface-variant">
+              Contact your administrator or HQ to resolve. The app will automatically
+              unlock once the status is cleared and a sync completes.
+            </p>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

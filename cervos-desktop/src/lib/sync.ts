@@ -1,5 +1,6 @@
 import { supabase, isConfigured } from './supabase'
 import { Fe, Pe, Et, Mt } from './database'
+import { useSyncStore } from './store'
 import type { DashboardStats } from '../types'
 
 let Ie: any = null
@@ -212,22 +213,10 @@ export async function syncSubscription(branchId: string): Promise<void> {
       .maybeSingle()
 
     if (branch) {
-      await Pe(
-        `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-        ['subscription_status', JSON.stringify(branch.subscription_status)]
-      )
-      await Pe(
-        `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-        ['subscription_tier', JSON.stringify(branch.subscription_tier)]
-      )
-      await Pe(
-        `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-        ['grace_ends_at', JSON.stringify(branch.grace_ends_at)]
-      )
-      await Pe(
-        `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-        ['trial_ends_at', JSON.stringify(branch.trial_ends_at)]
-      )
+      await Xd('subscription_status', JSON.stringify(branch.subscription_status))
+      await Xd('subscription_tier', JSON.stringify(branch.subscription_tier))
+      await Xd('grace_ends_at', JSON.stringify(branch.grace_ends_at))
+      await Xd('trial_ends_at', JSON.stringify(branch.trial_ends_at))
     }
   } catch (error) {
     console.error('Failed to sync subscription:', error)
@@ -240,6 +229,10 @@ export async function checkSubscriptionBlocked(): Promise<{ blocked: boolean; re
 
   const status = statusResult.length > 0 ? JSON.parse(statusResult[0].value) : 'trial'
 
+  if (status === 'locked') {
+    return { blocked: true, reason: 'Branch locked by HQ' }
+  }
+
   if (status === 'inactive') {
     if (graceResult.length > 0) {
       const graceEndsAt = JSON.parse(graceResult[0].value)
@@ -247,7 +240,7 @@ export async function checkSubscriptionBlocked(): Promise<{ blocked: boolean; re
         return { blocked: true, reason: 'Subscription grace period has expired' }
       }
     }
-    return { blocked: true, reason: 'Subscription is inactive' }
+    return { blocked: false }
   }
 
   if (status === 'past_due') {
@@ -257,54 +250,256 @@ export async function checkSubscriptionBlocked(): Promise<{ blocked: boolean; re
   return { blocked: false }
 }
 
+// ─── Push (upload local queue to Supabase) ───────────────────────────────────
+// Batched per table+operation so a cycle makes at most a handful of requests
+// instead of one per row — important on Supabase free tier.
+
 export async function processSyncQueue(): Promise<{ uploaded: number; failed: number }> {
+  return bulkPush()
+}
+
+async function bulkPush(): Promise<{ uploaded: number; failed: number }> {
   if (!Ie) return { uploaded: 0, failed: 0 }
+  const queue = await Fe('SELECT * FROM sync_queue ORDER BY created_at ASC')
+  if (queue.length === 0) return { uploaded: 0, failed: 0 }
 
-  const queue = await Fe('SELECT * FROM sync_queue ORDER BY created_at ASC LIMIT 50')
-  let uploaded = 0
-  let failed = 0
-
+  const groups: Record<string, { item: any; payload: any }[]> = {}
   for (const item of queue) {
     try {
       const payload = JSON.parse(item.payload)
-      const { table_name, row_id, operation } = item
-
-      if (operation === 'insert') {
-        const { error } = await Ie.from(table_name).insert(payload)
-        if (!error) {
-          await Fe('DELETE FROM sync_queue WHERE id = ?', [item.id])
-          uploaded++
-        } else {
-          failed++
-        }
-      } else if (operation === 'update') {
-        const { error } = await Ie.from(table_name).update(payload).eq('id', row_id)
-        if (!error) {
-          await Fe('DELETE FROM sync_queue WHERE id = ?', [item.id])
-          uploaded++
-        } else {
-          failed++
-        }
-      } else if (operation === 'delete') {
-        const { error } = await Ie.from(table_name).delete().eq('id', row_id)
-        if (!error) {
-          await Fe('DELETE FROM sync_queue WHERE id = ?', [item.id])
-          uploaded++
-        } else {
-          failed++
-        }
-      }
+      const key = `${item.table_name}:${item.operation}`
+      ;(groups[key] ||= []).push({ item, payload })
     } catch {
-      failed++
+      await Fe('DELETE FROM sync_queue WHERE id = ?', [item.id])
+    }
+  }
+
+  let uploaded = 0
+  let failed = 0
+  for (const key of Object.keys(groups)) {
+    const [table_name, operation] = key.split(':')
+    const entries = groups[key]
+    try {
+      if (operation === 'insert' || operation === 'update') {
+        const rows = entries.map((e) => e.payload)
+        const { error } = await Ie.from(table_name).upsert(rows, { onConflict: 'id' })
+        if (error) throw error
+      } else if (operation === 'delete') {
+        const ids = entries.map((e) => e.item.row_id)
+        const { error } = await Ie.from(table_name).delete().in('id', ids)
+        if (error) throw error
+      } else {
+        throw new Error('unknown operation')
+      }
+      for (const e of entries) await Fe('DELETE FROM sync_queue WHERE id = ?', [e.item.id])
+      uploaded += entries.length
+    } catch {
+      failed += entries.length
     }
   }
 
   if (uploaded > 0) {
-    await Pe(
-      `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      ['last_synced_at', JSON.stringify(new Date().toISOString())]
-    )
+    await Xd('last_synced_at', JSON.stringify(new Date().toISOString()))
   }
-
   return { uploaded, failed }
+}
+
+// ─── Pull (download delta from Supabase into local SQLite) ───────────────────
+// Done directly against the authed client because the server /api/sync route
+// authenticates via session cookies, which the desktop fetch cannot supply.
+
+async function upsertLocal(table: string, row: Record<string, any>): Promise<void> {
+  const cols = Object.keys(row)
+  const colList = cols.join(', ')
+  const placeholders = cols.map(() => '?').join(', ')
+  const updates = cols
+    .filter((c) => c !== 'id')
+    .map((c) => `${c} = excluded.${c}`)
+    .join(', ')
+  await Pe(
+    `INSERT INTO ${table} (${colList}) VALUES (${placeholders}) ON CONFLICT(id) DO UPDATE SET ${updates}`,
+    cols.map((c) => (row[c] === undefined ? null : row[c]))
+  )
+}
+
+async function applyCommand(cmd: any): Promise<void> {
+  const c = cmd.command
+  if (c === 'lock_branch' || c === 'suspend_branch') {
+    await Xd('subscription_status', JSON.stringify('locked'))
+    await Xd('locked_reason', JSON.stringify(cmd.reason ?? 'hq_command'))
+  } else if (c === 'unlock_branch') {
+    await Xd('subscription_status', JSON.stringify('active'))
+    await Xd('locked_reason', JSON.stringify(null))
+  }
+  // force_sync is naturally handled by the next cycle
+}
+
+async function applyPulledData(data: any): Promise<void> {
+  for (const p of data.products || []) {
+    await upsertLocal('products', {
+      id: p.id,
+      generic_name: p.generic_name,
+      brand_name: p.brand_name ?? '',
+      category: p.category ?? '',
+      formulation: p.formulation ?? null,
+      requires_prescription: p.requires_prescription ? 1 : 0,
+      barcode: p.barcode ?? null,
+      default_expiry: p.default_expiry ?? null,
+      default_cost_price: p.default_cost_price ?? null,
+      default_sale_price: p.default_sale_price ?? null,
+      updated_at: p.updated_at,
+    })
+  }
+  for (const b of data.batches || []) {
+    await upsertLocal('batches', {
+      id: b.id,
+      branch_id: b.branch_id,
+      product_id: b.product_id,
+      batch_number: b.batch_number ?? null,
+      quantity: b.quantity ?? 0,
+      cost_price: b.cost_price ?? 0,
+      sale_price: b.sale_price ?? 0,
+      expiry_date: b.expiry_date ?? null,
+      sync_version: b.sync_version ?? 1,
+      updated_at: b.updated_at,
+    })
+  }
+  for (const cmd of data.commands || []) {
+    await applyCommand(cmd)
+  }
+}
+
+// ─── Full sync cycle (pull + push + subscription + commands) ─────────────────
+
+let _autoTimer: any = null
+let _cleanupAuto: (() => void) | null = null
+let _failStreak = 0
+let _syncing = false
+const BASE_INTERVAL = 5 * 60 * 1000
+const MAX_BACKOFF = 30 * 60 * 1000
+const FIRST_DELAY = 8000
+
+export async function runSyncCycle(): Promise<{ ok: boolean; pulled?: number; pushed?: number; message?: string }> {
+  if (typeof window === 'undefined') return { ok: false, message: 'no window' }
+  if (_syncing) return { ok: false, message: 'already syncing' }
+  const linked = await Z8()
+  if (!linked || !Ie) return { ok: false, message: 'not linked' }
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return { ok: false, message: 'offline' }
+
+  _syncing = true
+  useSyncStore.getState().setSyncing(true)
+  try {
+    const branchResult = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
+    if (!branchResult.length) return { ok: false, message: 'no branch' }
+    const branchId = JSON.parse(branchResult[0].value)
+    const accountResult = await Fe("SELECT value FROM app_settings WHERE key = 'account_id'")
+    const accountId = accountResult.length ? JSON.parse(accountResult[0].value) : null
+    if (!accountId) return { ok: false, message: 'no account' }
+
+    const since = (await q0(branchId)) || '1970-01-01T00:00:00Z'
+
+    const [prodRes, batchRes, cmdRes, branchRes] = await Promise.all([
+      Ie.from('products').select('*').gt('updated_at', since),
+      Ie.from('batches').select('*').eq('branch_id', branchId).gt('updated_at', since),
+      Ie.from('branch_commands').select('*').eq('branch_id', branchId).eq('status', 'pending'),
+      Ie.from('branches')
+        .select('subscription_status, subscription_tier, grace_ends_at, trial_ends_at, locked_reason')
+        .eq('id', branchId)
+        .maybeSingle(),
+    ])
+
+    const products = prodRes.data || []
+    const batches = batchRes.data || []
+    const commands = cmdRes.data || []
+    const branch = branchRes.data || null
+
+    const pulled = products.length + batches.length + commands.length
+
+    await applyPulledData({ products, batches, commands, branch })
+
+    if (commands.length > 0) {
+      await Ie.from('branch_commands')
+        .update({ status: 'acknowledged', acknowledged_at: new Date().toISOString() })
+        .eq('branch_id', branchId)
+        .eq('status', 'pending')
+    }
+
+    if (branch) {
+      await Xd('subscription_status', JSON.stringify(branch.subscription_status))
+      await Xd('subscription_tier', JSON.stringify(branch.subscription_tier ?? null))
+      await Xd('grace_ends_at', JSON.stringify(branch.grace_ends_at ?? null))
+      await Xd('trial_ends_at', JSON.stringify(branch.trial_ends_at ?? null))
+      await Xd('locked_reason', JSON.stringify(branch.locked_reason ?? null))
+    }
+
+    const pushed = await bulkPush()
+
+    const nowIso = new Date().toISOString()
+    await K0(branchId, nowIso)
+    await Xd('last_synced_at', JSON.stringify(nowIso))
+
+    const block = await checkSubscriptionBlocked()
+    useSyncStore.getState().setBlocked(block.blocked, block.reason ?? null)
+    useSyncStore.getState().setLastSyncAt(nowIso)
+    const pendingRes = await Fe('SELECT COUNT(*) AS c FROM sync_queue')
+    useSyncStore.getState().setPending(pendingRes[0]?.c ?? 0)
+
+    _failStreak = 0
+    return { ok: true, pulled, pushed: pushed.uploaded }
+  } catch (e: any) {
+    _failStreak++
+    return { ok: false, message: e?.message || 'sync error' }
+  } finally {
+    _syncing = false
+    useSyncStore.getState().setSyncing(false)
+  }
+}
+
+// ─── Auto-sync scheduler (free-tier friendly) ────────────────────────────────
+// - One cycle at a time (no overlap)
+// - Base interval 5 min; on failure, exponential backoff capped at 30 min
+// - Also fires on tab focus / network reconnect (debounced by the single-flight guard)
+// - Skips entirely when offline or not linked
+
+export function startAutoSync(): void {
+  if (_autoTimer) return
+
+  const tick = async () => {
+    try {
+      await runSyncCycle()
+    } catch {
+      /* swallow — backoff handles retries */
+    }
+    const next = _failStreak > 0
+      ? Math.min(BASE_INTERVAL * Math.pow(2, _failStreak), MAX_BACKOFF)
+      : BASE_INTERVAL
+    _autoTimer = setTimeout(tick, next)
+  }
+  _autoTimer = setTimeout(tick, FIRST_DELAY)
+
+  const onVisible = () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      runSyncCycle().catch(() => {})
+    }
+  }
+  const onOnline = () => runSyncCycle().catch(() => {})
+
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible)
+  if (typeof window !== 'undefined') window.addEventListener('online', onOnline)
+
+  _cleanupAuto = () => {
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible)
+    if (typeof window !== 'undefined') window.removeEventListener('online', onOnline)
+  }
+}
+
+export function stopAutoSync(): void {
+  if (_autoTimer) {
+    clearTimeout(_autoTimer)
+    _autoTimer = null
+  }
+  if (_cleanupAuto) {
+    _cleanupAuto()
+    _cleanupAuto = null
+  }
 }

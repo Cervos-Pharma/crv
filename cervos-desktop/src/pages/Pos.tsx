@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Fe, Pe, Et, Mt } from "../lib/database";
-import { qs, processSyncQueue } from "../lib/sync";
+import { qs, processSyncQueue, checkSubscriptionBlocked } from "../lib/sync";
 import { useAuthStore } from "../lib/store";
 import type { Product, Batch } from "../types";
 
@@ -285,6 +285,12 @@ export default function Pos() {
 
   async function processSale() {
     if (cart.length === 0 || isProcessing) return;
+
+    const block = await checkSubscriptionBlocked();
+    if (block.blocked) {
+      alert(`Cannot process sale: ${block.reason || "subscription blocked"}`);
+      return;
+    }
 
     setIsProcessing(true);
     try {

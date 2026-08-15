@@ -124,6 +124,18 @@ ALTER TABLE branches ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPT
 
 ALTER TABLE products ADD COLUMN IF NOT EXISTS stock INTEGER DEFAULT 0;
 
+-- Columns added for desktop endpoint <-> HQ sync (formulation, barcode, pricing, sync tracking)
+ALTER TABLE products ADD COLUMN IF NOT EXISTS formulation TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS barcode TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS default_expiry TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS default_cost_price REAL;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS default_sale_price REAL;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+ALTER TABLE batches ADD COLUMN IF NOT EXISTS batch_number TEXT;
+ALTER TABLE batches ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES accounts(id);
 
 ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES accounts(id);
@@ -229,3 +241,44 @@ CREATE INDEX IF NOT EXISTS idx_supplier_invites_status ON supplier_invites(statu
 CREATE INDEX IF NOT EXISTS idx_billing_payments_account_id ON billing_payments(account_id);
 CREATE INDEX IF NOT EXISTS idx_news_posts_published ON news_posts(published);
 CREATE INDEX IF NOT EXISTS idx_app_releases_platform ON app_releases(platform);
+
+-- ============================================
+-- ENDPOINT SYNC TABLES (desktop <-> HQ)
+-- Idempotent: safe to re-run. Mirrors the desktop SQLite schema.
+-- RLS is intentionally OFF for these (anon key writes from the desktop
+-- client), consistent with how `sales` is already synced.
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS products (
+  id UUID PRIMARY KEY,
+  generic_name TEXT NOT NULL,
+  brand_name TEXT,
+  category TEXT,
+  formulation TEXT,
+  requires_prescription BOOLEAN DEFAULT false,
+  barcode TEXT,
+  unit_desc TEXT,
+  default_expiry TEXT,
+  default_cost_price REAL,
+  default_sale_price REAL,
+  stock INTEGER DEFAULT 0,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS batches (
+  id UUID PRIMARY KEY,
+  branch_id UUID REFERENCES branches(id) ON DELETE CASCADE,
+  product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+  batch_number TEXT,
+  quantity INTEGER DEFAULT 0,
+  cost_price REAL DEFAULT 0,
+  sale_price REAL DEFAULT 0,
+  expiry_date TEXT,
+  sync_version INTEGER DEFAULT 1,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_products_updated_at ON products(updated_at);
+CREATE INDEX IF NOT EXISTS idx_batches_branch_id ON batches(branch_id);
+CREATE INDEX IF NOT EXISTS idx_batches_product_id ON batches(product_id);
+CREATE INDEX IF NOT EXISTS idx_batches_updated_at ON batches(updated_at);

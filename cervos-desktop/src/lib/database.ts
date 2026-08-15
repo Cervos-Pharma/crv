@@ -81,9 +81,13 @@ async function runMigrations(): Promise<void> {
       generic_name TEXT NOT NULL,
       brand_name TEXT,
       category TEXT,
+      formulation TEXT,
       requires_prescription INTEGER DEFAULT 0,
       barcode TEXT,
-      updated_at TEXT
+      updated_at TEXT,
+      default_expiry TEXT,
+      default_cost_price REAL,
+      default_sale_price REAL
     )
   `)
 
@@ -92,11 +96,13 @@ async function runMigrations(): Promise<void> {
       id TEXT PRIMARY KEY,
       branch_id TEXT,
       product_id TEXT NOT NULL,
+      batch_number TEXT,
       quantity INTEGER DEFAULT 0,
       cost_price REAL DEFAULT 0,
       sale_price REAL DEFAULT 0,
       expiry_date TEXT,
       sync_version INTEGER DEFAULT 1,
+      updated_at TEXT,
       FOREIGN KEY (product_id) REFERENCES products(id)
     )
   `)
@@ -219,6 +225,21 @@ async function runMigrations(): Promise<void> {
       )
     }
   }
+
+  // Idempotent column additions for databases created before these columns existed
+  const addColumn = (table: string, column: string, definition: string) => {
+    try {
+      db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+    } catch (e) {
+      // Column likely already exists — safe to ignore
+    }
+  }
+  addColumn('products', 'formulation', 'TEXT')
+  addColumn('products', 'default_expiry', 'TEXT')
+  addColumn('products', 'default_cost_price', 'REAL')
+  addColumn('products', 'default_sale_price', 'REAL')
+  addColumn('batches', 'batch_number', 'TEXT')
+  addColumn('batches', 'updated_at', 'TEXT')
 }
 
 export async function Fe(sql: string, params: any[] = [], timeoutMs = 5000): Promise<any[]> {

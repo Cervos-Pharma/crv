@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Fe, Pe } from '../lib/database'
-import { np, tp } from '../lib/sync'
+import { np, tp, runSyncCycle } from '../lib/sync'
 import { useAuthStore } from '../lib/store'
 import { fetchOperators, createOperator, deleteOperator } from '../lib/queries'
-import { supabaseUrl } from '../lib/supabase'
 import type { Operator } from '../types'
 
 export default function Settings() {
@@ -88,45 +87,19 @@ export default function Settings() {
     setIsSyncing(true)
     setSyncMessage('')
     try {
-      const sync = await import('../lib/sync')
-      const supabase = sync.getSupabase()
-      const { data: sessionData } = await supabase.auth.getSession()
-      if (!sessionData.session) {
-        setSyncMessage('Not linked to server.')
-        return
+      const result = await runSyncCycle()
+      if (!result.ok) {
+        setSyncMessage(`Sync failed: ${result.message || 'unknown error'}`)
+      } else {
+        setSyncMessage(
+          `Synced at ${new Date().toLocaleTimeString()} — pulled ${result.pulled ?? 0}, pushed ${result.pushed ?? 0}`
+        )
       }
-      const branchResult = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
-      if (!branchResult.length) { setSyncMessage('No branch set.'); return }
-      const branchId = JSON.parse(branchResult[0].value)
-
-      const accountIdResult = await Fe("SELECT value FROM app_settings WHERE key = 'account_id'")
-      const accountId = accountIdResult.length > 0 ? JSON.parse(accountIdResult[0].value) : null
-      if (!accountId) { setSyncMessage('No account ID found.'); return }
-
-      const lastPull = await sync.q0(branchId)
-      const since = lastPull || '1970-01-01T00:00:00Z'
-
-      const res = await fetch(`${supabaseUrl}/api/sync?since=${encodeURIComponent(since)}`, {
-        headers: {
-          Authorization: `Bearer ${sessionData.session.access_token}`,
-          'x-account-id': accountId
-        }
-      })
-      if (!res.ok) throw new Error(`Sync failed: ${res.status}`)
-      const data = await res.json()
-
-      await sync.syncSubscription(branchId)
-
-      const now = new Date().toISOString()
-      await sync.K0(branchId, now)
-      await sync.Xd('last_synced_at', now)
-
-      const s = await sync.np()
-      setStats(s)
-      setSyncMessage(`Synced ${data.records ?? 0} records at ${new Date().toLocaleTimeString()}`)
     } catch (err: any) {
       setSyncMessage(`Sync failed: ${err.message}`)
     } finally {
+      const s = await np()
+      setStats(s)
       setIsSyncing(false)
     }
   }

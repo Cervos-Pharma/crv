@@ -3,6 +3,7 @@ export interface Product {
   generic_name: string
   brand_name: string
   category: string
+  formulation: string | null
   requires_prescription: number
   barcode: string | null
   updated_at: string | null

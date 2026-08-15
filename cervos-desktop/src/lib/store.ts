@@ -109,3 +109,27 @@ export const useUIStore = create<UIState>()((set) => ({
   setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
   setNotificationsOpen: (notificationsOpen) => set({ notificationsOpen }),
 }))
+
+interface SyncState {
+  blocked: boolean
+  blockReason: string | null
+  lastSyncAt: string | null
+  isSyncing: boolean
+  pending: number
+  setBlocked: (blocked: boolean, reason?: string | null) => void
+  setLastSyncAt: (at: string | null) => void
+  setSyncing: (syncing: boolean) => void
+  setPending: (pending: number) => void
+}
+
+export const useSyncStore = create<SyncState>()((set) => ({
+  blocked: false,
+  blockReason: null,
+  lastSyncAt: null,
+  isSyncing: false,
+  pending: 0,
+  setBlocked: (blocked, reason = null) => set({ blocked, blockReason: reason }),
+  setLastSyncAt: (at) => set({ lastSyncAt: at }),
+  setSyncing: (syncing) => set({ isSyncing: syncing }),
+  setPending: (pending) => set({ pending }),
+}))

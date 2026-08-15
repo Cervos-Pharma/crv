@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { Fe, Pe, Et } from "../lib/database";
+import { Fe, Pe, Et, Mt } from "../lib/database";
+import { qs, runSyncCycle } from "../lib/sync";
 import { PHARMACY_CATEGORIES } from "../lib/branding";
 import { useAuthStore } from "../lib/store";
 import type { Product, Batch } from "../types";
@@ -285,6 +286,7 @@ export default function Inventory() {
             <tr className="text-left text-xs font-semibold text-on-surface-variant uppercase">
               <th className="px-4 py-3">Product</th>
               <th className="px-4 py-3">Category</th>
+              <th className="px-4 py-3">Formulation</th>
               <th className="px-4 py-3">Barcode</th>
               <th className="px-4 py-3 text-right">Stock</th>
               <th className="px-4 py-3 text-right">Cost</th>
@@ -325,6 +327,9 @@ export default function Inventory() {
                   </td>
                   <td className="px-4 py-3 text-sm text-on-surface-variant">
                     {product.category || "Uncategorized"}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-on-surface-variant">
+                    {product.formulation || "—"}
                   </td>
                   <td className="px-4 py-3 text-sm font-mono">
                     {product.barcode || "—"}
@@ -387,41 +392,107 @@ export default function Inventory() {
             setEditingProduct(null);
           }}
           onSave={async (productData) => {
+            const now = Mt();
+            let productId: string;
             if (editingProduct) {
+              productId = editingProduct.id;
               await Pe(
-                `UPDATE products SET generic_name = ?, brand_name = ?, category = ?, requires_prescription = ?, barcode = ?, default_expiry = ?, default_cost_price = ?, default_sale_price = ? WHERE id = ?`,
+                `UPDATE products SET generic_name = ?, brand_name = ?, category = ?, formulation = ?, requires_prescription = ?, barcode = ?, default_expiry = ?, default_cost_price = ?, default_sale_price = ?, updated_at = ? WHERE id = ?`,
                 [
                   productData.generic_name,
                   productData.brand_name,
                   productData.category,
+                  productData.formulation,
                   productData.requires_prescription ? 1 : 0,
                   productData.barcode,
                   productData.default_expiry || null,
                   productData.default_cost_price || null,
                   productData.default_sale_price || null,
+                  now,
                   editingProduct.id,
                 ]
               );
+              await qs("products", productId, "update", {
+                id: productId,
+                generic_name: productData.generic_name,
+                brand_name: productData.brand_name,
+                category: productData.category,
+                formulation: productData.formulation,
+                requires_prescription: productData.requires_prescription ? 1 : 0,
+                barcode: productData.barcode,
+                default_expiry: productData.default_expiry || null,
+                default_cost_price: productData.default_cost_price || null,
+                default_sale_price: productData.default_sale_price || null,
+                updated_at: now,
+              });
             } else {
-              const id = Et();
+              productId = Et();
               await Pe(
-                `INSERT INTO products (id, generic_name, brand_name, category, requires_prescription, barcode, default_expiry, default_cost_price, default_sale_price) VALUES (?,?,?,?,?,?,?,?,?)`,
+                `INSERT INTO products (id, generic_name, brand_name, category, formulation, requires_prescription, barcode, default_expiry, default_cost_price, default_sale_price, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
                 [
-                  id,
+                  productId,
                   productData.generic_name,
                   productData.brand_name,
                   productData.category,
+                  productData.formulation,
                   productData.requires_prescription ? 1 : 0,
                   productData.barcode,
                   productData.default_expiry || null,
                   productData.default_cost_price || null,
                   productData.default_sale_price || null,
+                  now,
                 ]
               );
+              await qs("products", productId, "insert", {
+                id: productId,
+                generic_name: productData.generic_name,
+                brand_name: productData.brand_name,
+                category: productData.category,
+                formulation: productData.formulation,
+                requires_prescription: productData.requires_prescription ? 1 : 0,
+                barcode: productData.barcode,
+                default_expiry: productData.default_expiry || null,
+                default_cost_price: productData.default_cost_price || null,
+                default_sale_price: productData.default_sale_price || null,
+                updated_at: now,
+              });
+            }
+
+            if (productData.quantity > 0) {
+              const branchRes = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'");
+              const branchId = branchRes.length > 0 ? JSON.parse(branchRes[0].value) : null;
+              const batchId = Et();
+              await Pe(
+                `INSERT INTO batches (id, branch_id, product_id, batch_number, quantity, cost_price, sale_price, expiry_date, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
+                [
+                  batchId,
+                  branchId,
+                  productId,
+                  null,
+                  productData.quantity,
+                  productData.default_cost_price || 0,
+                  productData.default_sale_price || 0,
+                  productData.default_expiry || null,
+                  now,
+                ]
+              );
+              await qs("batches", batchId, "insert", {
+                id: batchId,
+                branch_id: branchId,
+                product_id: productId,
+                batch_number: null,
+                quantity: productData.quantity,
+                cost_price: productData.default_cost_price || 0,
+                sale_price: productData.default_sale_price || 0,
+                expiry_date: productData.default_expiry || null,
+                sync_version: 1,
+                updated_at: now,
+              });
             }
             loadData();
             setShowAddModal(false);
             setEditingProduct(null);
+            runSyncCycle().catch(() => {});
           }}
         />
       )}
@@ -436,18 +507,23 @@ interface ProductModalProps {
     generic_name: string;
     brand_name: string;
     category: string;
+    formulation: string;
     requires_prescription: boolean;
     barcode: string;
+    quantity: number;
     default_expiry?: string;
     default_cost_price?: number;
     default_sale_price?: number;
   }) => void;
 }
 
+const FORMULATIONS = ["Tablet", "Capsule", "Syrup", "Injection", "Cream", "Ointment", "Drops", "Inhaler", "Suppository", "Powder", "Solution", "Suspension", "Gel", "Patch", "Other"]
+
 function ProductModal({ product, onClose, onSave }: ProductModalProps) {
   const [genericName, setGenericName] = useState(product?.generic_name || "");
   const [brandName, setBrandName] = useState(product?.brand_name || "");
   const [category, setCategory] = useState(product?.category || "");
+  const [formulation, setFormulation] = useState(product?.formulation || "");
   const [requiresPrescription, setRequiresPrescription] = useState(
     !!product?.requires_prescription
   );
@@ -455,10 +531,11 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
   const [defaultExpiry, setDefaultExpiry] = useState(product?.default_expiry || "");
   const [defaultCostPrice, setDefaultCostPrice] = useState(product?.default_cost_price?.toString() || "");
   const [defaultSalePrice, setDefaultSalePrice] = useState(product?.default_sale_price?.toString() || "");
+  const [quantity, setQuantity] = useState(product ? "0" : "1");
   const [showScanner, setShowScanner] = useState(false);
 
   const inputClass =
-    "w-full px-3 py-2.5 rounded-md border border-outline-variant bg-surface-base text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary";
+    "w-full px-3 py-2.5 rounded-md border border-outline-variant bg-white text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary";
   const labelClass = "block text-xs font-semibold text-on-surface-variant mb-1";
 
   function handleSubmit(e: React.FormEvent) {
@@ -467,8 +544,10 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
       generic_name: genericName.trim(),
       brand_name: brandName.trim(),
       category,
+      formulation,
       requires_prescription: requiresPrescription,
       barcode: barcode.trim(),
+      quantity: parseInt(quantity, 10) || 0,
       default_expiry: defaultExpiry || undefined,
       default_cost_price: defaultCostPrice ? parseFloat(defaultCostPrice) : undefined,
       default_sale_price: defaultSalePrice ? parseFloat(defaultSalePrice) : undefined,
@@ -540,6 +619,20 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
             </div>
 
             <div>
+              <label className={labelClass}>Formulation</label>
+              <select
+                value={formulation}
+                onChange={(e) => setFormulation(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">Select formulation</option>
+                {FORMULATIONS.map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
               <label className={labelClass}>Barcode</label>
               <div className="flex gap-2">
                 <input
@@ -560,7 +653,7 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <div>
                 <label className={labelClass}>Default Expiry</label>
                 <input
@@ -592,6 +685,17 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
                 onChange={(e) => setDefaultSalePrice(e.target.value)}
                 className={inputClass}
                 placeholder="0.00"
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Stock Qty</label>
+              <input
+                type="number"
+                min="0"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                className={inputClass}
+                placeholder="0"
               />
             </div>
           </div>
