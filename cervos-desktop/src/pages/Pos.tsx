@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Fe, Pe, Et, Mt } from "../lib/database";
-import { qs } from "../lib/sync";
+import { qs, processSyncQueue } from "../lib/sync";
 import { useAuthStore } from "../lib/store";
 import type { Product, Batch } from "../types";
 
@@ -351,6 +351,8 @@ export default function Pos() {
       setTenderAmount("");
       setDiscount("0");
       loadData();
+
+      processSyncQueue().catch(console.error);
     } catch (err) {
       console.error("Sale processing failed:", err);
     } finally {
