@@ -1,4 +1,4 @@
-export interface Product {
+﻿export interface Product {
   id: string
   generic_name: string
   brand_name: string
@@ -10,6 +10,8 @@ export interface Product {
   default_expiry: string | null
   default_cost_price: number | null
   default_sale_price: number | null
+  low_stock_threshold: number
+  notify_threshold: number
 }
 
 export interface Batch {

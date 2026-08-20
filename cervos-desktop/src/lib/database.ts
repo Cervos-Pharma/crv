@@ -1,4 +1,4 @@
-let db: any = null
+﻿let db: any = null
 let SQL: any = null
 
 const DB_KEY = 'cervos_db'
@@ -87,7 +87,9 @@ async function runMigrations(): Promise<void> {
       updated_at TEXT,
       default_expiry TEXT,
       default_cost_price REAL,
-      default_sale_price REAL
+      default_sale_price REAL,
+      low_stock_threshold INTEGER DEFAULT 10,
+      notify_threshold INTEGER DEFAULT 5
     )
   `)
 
@@ -231,7 +233,7 @@ async function runMigrations(): Promise<void> {
     try {
       db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
     } catch (e) {
-      // Column likely already exists — safe to ignore
+      // Column likely already exists â€” safe to ignore
     }
   }
   addColumn('products', 'formulation', 'TEXT')
@@ -240,9 +242,11 @@ async function runMigrations(): Promise<void> {
   addColumn('products', 'default_sale_price', 'REAL')
   addColumn('batches', 'batch_number', 'TEXT')
   addColumn('batches', 'updated_at', 'TEXT')
+  addColumn('products', 'low_stock_threshold', 'INTEGER DEFAULT 10')
+  addColumn('products', 'notify_threshold', 'INTEGER DEFAULT 5')
 }
 
-export async function Fe(sql: string, params: any[] = [], timeoutMs = 5000): Promise<any[]> {
+export async function queryDb(sql: string, params: any[] = [], timeoutMs = 5000): Promise<any[]> {
   if (!db) {
     const initPromise = initDb()
     const timeout = new Promise<void>((_, reject) => setTimeout(() => reject(new Error('initDb timeout')), timeoutMs))
@@ -259,21 +263,21 @@ export async function Fe(sql: string, params: any[] = [], timeoutMs = 5000): Pro
     stmt.free()
     return results
   } catch (err) {
-    console.error('Fe error:', err)
+    console.error('queryDb error:', err)
     return []
   }
 }
 
-export async function Pe(sql: string, params: any[] = []): Promise<void> {
+export async function executeDb(sql: string, params: any[] = []): Promise<void> {
   if (!db) await initDb()
   db.run(sql, params)
   saveDb()
 }
 
-export function Et(): string {
+export function generateId(): string {
   return crypto.randomUUID()
 }
 
-export function Mt(): string {
+export function nowIso(): string {
   return new Date().toISOString()
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fetchProduct, updateProduct } from '../lib/queries'
 import { Product } from '../lib/types'
@@ -113,7 +113,7 @@ export default function ProductInventoryDetail() {
           </div>
           <div className="bg-surface rounded-lg p-4 text-center">
             <p className="text-sm text-gray-400 mb-1">Unit Price</p>
-            <p className="text-3xl font-bold text-white">${product.price}</p>
+            <p className="text-3xl font-bold text-white">TZS ${product.price.toLocaleString()}</p>
           </div>
         </div>
 

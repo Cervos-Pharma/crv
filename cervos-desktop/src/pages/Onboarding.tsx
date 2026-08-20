@@ -1,7 +1,7 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Pe } from '../lib/database'
-import { Nd, Wf } from '../lib/sync'
+import { executeDb } from '../lib/database'
+import { signIn, linkBranch } from '../lib/sync'
 import { useAuth } from '../lib/hooks'
 import { invoke } from '@tauri-apps/api/core'
 
@@ -19,19 +19,19 @@ interface OnboardingProps {
 }
 
 async function saveCentreDetails(details: CentreDetails) {
-  await Pe(
+  await executeDb(
     `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     ['centre_name', JSON.stringify(details.name.trim())]
   )
-  await Pe(
+  await executeDb(
     `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     ['centre_address', JSON.stringify(details.address.trim())]
   )
-  await Pe(
+  await executeDb(
     `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     ['centre_phone', JSON.stringify(details.phone.trim())]
   )
-  await Pe(
+  await executeDb(
     `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     ['centre_email', JSON.stringify(details.email.trim())]
   )
@@ -71,8 +71,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     setIsLoading(true)
     setError(null)
     try {
-      await Nd(email.trim(), password)
-      await Wf()
+      await signIn(email.trim(), password)
+      await linkBranch()
       setStep('create-pin')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid email or password')
@@ -91,11 +91,11 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     setError(null)
     try {
       const { createOperator } = await import('../lib/queries')
-      const { Fe: dbFe } = await import('../lib/database')
-      const { Et } = await import('../lib/database')
+      const { queryDb: dbQuery } = await import('../lib/database')
+      const { generateId } = await import('../lib/database')
 
-      const branchResult = await dbFe("SELECT value FROM app_settings WHERE key = 'branch_id'")
-      const branchId = branchResult.length > 0 ? JSON.parse(branchResult[0].value) : Et()
+      const branchResult = await dbQuery("SELECT value FROM app_settings WHERE key = 'branch_id'")
+      const branchId = branchResult.length > 0 ? JSON.parse(branchResult[0].value) : generateId()
 
       const op = await createOperator({
         branch_id: branchId,

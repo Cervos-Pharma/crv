@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/hooks'
 import { fetchProducts, searchProducts, createProduct, deleteProduct } from '../lib/queries'
-import { Product } from '../lib/types'
+import { Product, PHARMACY_CATEGORIES, FORMULATIONS } from '../lib/types'
 import StockBadge from '../components/StockBadge'
 import { showToast } from '../components/ToastContainer'
 
@@ -13,12 +13,18 @@ export default function Catalog() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [newProduct, setNewProduct] = useState({
-    name: '',
+    generic_name: '',
+    brand_name: '',
     sku: '',
+    barcode: '',
     category: '',
+    formulation: '',
+    requires_prescription: false,
     price: 0,
     stock_quantity: 0,
     description: '',
+    low_stock_threshold: 10,
+    notify_threshold: 5,
   })
 
   useEffect(() => {
@@ -62,10 +68,20 @@ export default function Catalog() {
 
     try {
       const product = await createProduct({
-        ...newProduct,
+        name: newProduct.generic_name,
+        generic_name: newProduct.generic_name,
+        brand_name: newProduct.brand_name,
+        description: newProduct.description,
+        sku: newProduct.sku,
+        barcode: newProduct.barcode,
+        category: newProduct.category,
+        formulation: newProduct.formulation,
+        requires_prescription: newProduct.requires_prescription,
         supplier_id: supplier.id,
-        stock_status: newProduct.stock_quantity > 10 ? 'in_stock' : newProduct.stock_quantity > 0 ? 'low_stock' : 'out_of_stock',
-        currency: 'USD',
+        stock_status: newProduct.stock_quantity > (newProduct.low_stock_threshold || 10) ? 'in_stock' : newProduct.stock_quantity > 0 ? 'low_stock' : 'out_of_stock',
+        low_stock_threshold: newProduct.low_stock_threshold || 10,
+        notify_threshold: newProduct.notify_threshold || 5,
+        currency: 'TZS',
         min_order_quantity: 1,
         specifications: {},
         tags: [],
@@ -74,7 +90,7 @@ export default function Catalog() {
       })
       setProducts([product, ...products])
       setShowAddModal(false)
-      setNewProduct({ name: '', sku: '', category: '', price: 0, stock_quantity: 0, description: '' })
+      setNewProduct({ generic_name: '', brand_name: '', sku: '', barcode: '', category: '', formulation: '', requires_prescription: false, price: 0, stock_quantity: 0, description: '', low_stock_threshold: 10, notify_threshold: 5 })
       showToast('success', 'Product created successfully')
     } catch (error) {
       showToast('error', 'Failed to create product')
@@ -165,6 +181,9 @@ export default function Catalog() {
                   Category
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                  Formulation
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Price
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
@@ -188,7 +207,8 @@ export default function Catalog() {
                   </td>
                   <td className="px-6 py-4 text-gray-400 font-mono text-sm">{product.sku}</td>
                   <td className="px-6 py-4 text-gray-400">{product.category}</td>
-                  <td className="px-6 py-4 text-white font-medium">${product.price.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-gray-400">{product.formulation || "—"}</td>
+                  <td className="px-6 py-4 text-white font-medium">TZS {product.price.toLocaleString()}</td>
                   <td className="px-6 py-4">
                     <StockBadge status={product.stock_status} />
                   </td>
@@ -219,16 +239,55 @@ export default function Catalog() {
             <div className="p-6 border-b border-surface-300">
               <h3 className="text-xl font-semibold text-white">Add New Product</h3>
             </div>
-            <form onSubmit={handleAddProduct} className="p-6 space-y-4">
+            <form onSubmit={handleAddProduct} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Name</label>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Generic Name *</label>
                 <input
                   type="text"
                   required
-                  value={newProduct.name}
-                  onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
+                  value={newProduct.generic_name}
+                  onChange={(e) => setNewProduct({ ...newProduct, generic_name: e.target.value })}
                   className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
+                  placeholder="e.g. Paracetamol"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Brand Name</label>
+                <input
+                  type="text"
+                  value={newProduct.brand_name}
+                  onChange={(e) => setNewProduct({ ...newProduct, brand_name: e.target.value })}
+                  className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
+                  placeholder="e.g. Panadol"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Category</label>
+                  <select
+                    value={newProduct.category}
+                    onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
+                    className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white focus:outline-none focus:border-accent"
+                  >
+                    <option value="">Select category</option>
+                    {PHARMACY_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Formulation</label>
+                  <select
+                    value={newProduct.formulation}
+                    onChange={(e) => setNewProduct({ ...newProduct, formulation: e.target.value })}
+                    className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white focus:outline-none focus:border-accent"
+                  >
+                    <option value="">Select formulation</option>
+                    {FORMULATIONS.map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -242,19 +301,19 @@ export default function Catalog() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">Category</label>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Barcode</label>
                   <input
                     type="text"
-                    required
-                    value={newProduct.category}
-                    onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
+                    value={newProduct.barcode}
+                    onChange={(e) => setNewProduct({ ...newProduct, barcode: e.target.value })}
                     className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
+                    placeholder="e.g. 1234567890123"
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">Price ($)</label>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Price (TZS)</label>
                   <input
                     type="number"
                     required
@@ -276,6 +335,48 @@ export default function Catalog() {
                     className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Min Order</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={1}
+                    readOnly
+                    className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Low Stock Threshold</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={newProduct.low_stock_threshold}
+                    onChange={(e) => setNewProduct({ ...newProduct, low_stock_threshold: parseInt(e.target.value) || 10 })}
+                    className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Notify Threshold</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={newProduct.notify_threshold}
+                    onChange={(e) => setNewProduct({ ...newProduct, notify_threshold: parseInt(e.target.value) || 5 })}
+                    className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="requires_prescription"
+                  checked={newProduct.requires_prescription}
+                  onChange={(e) => setNewProduct({ ...newProduct, requires_prescription: e.target.checked })}
+                  className="w-4 h-4 rounded border-surface-300 text-accent focus:ring-accent"
+                />
+                <label htmlFor="requires_prescription" className="text-sm text-gray-400">Requires Prescription</label>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-2">Description</label>

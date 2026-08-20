@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import type { NetworkHealthMetrics } from "@/lib/actions/hq";
 
 interface BranchPoint {
@@ -52,33 +52,40 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const globeInstanceRef = useRef<unknown>(null);
   const leafletMapRef = useRef<unknown>(null);
+  const leafletLoadedRef = useRef(false);
   const [view, setView] = useState<"globe" | "map">("globe");
   const [globeError, setGlobeError] = useState<string | null>(null);
 
-  const validPoints = branchLocations.filter((b) => b.lat != null && b.lng != null);
+  const validPoints = useMemo(
+    () => branchLocations.filter((b) => b.lat != null && b.lng != null),
+    [branchLocations]
+  );
 
-  // ── 2D Leaflet map ──────────────────────────────────────────────────────────
+  // ── 2D Leaflet map (init once, sync markers) ──────────────────────────────
   useEffect(() => {
     if (view !== "map") return;
 
-    let isMounted = true;
-    let map: ReturnType<typeof import("leaflet")["map"]> | null = null;
+    let cancelled = false;
 
     (async () => {
       const L = (await import("leaflet")).default;
 
-      if (!isMounted || !mapContainerRef.current) return;
+      if (cancelled || !mapContainerRef.current || leafletLoadedRef.current) return;
 
-      map = L.map(mapContainerRef.current).setView([-6.7924, 39.2083], 6);
+      const map = L.map(mapContainerRef.current).setView([-6.7924, 39.2083], 6);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "&copy; OpenStreetMap contributors",
         maxZoom: 18,
       }).addTo(map);
 
-      if (validPoints.length === 0) return;
+      const layer = L.layerGroup().addTo(map);
 
-      for (const point of validPoints) {
-        if (point.lat == null || point.lng == null) continue;
+      leafletMapRef.current = map;
+      leafletLoadedRef.current = true;
+
+      // Add markers
+      validPoints.forEach((point) => {
+        if (point.lat == null || point.lng == null) return;
         const color = STATUS_COLORS[point.status] ?? "#6750A4";
         L.circleMarker([point.lat, point.lng], {
           radius: 6,
@@ -87,13 +94,13 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
           weight: 1.5,
           fillOpacity: 0.8,
         }).bindPopup(`
-          <div style="font-family:sans-serif;min-width:140px">
+          <div style="font-family:system-ui,sans-serif;min-width:140px">
             <strong>${point.name}</strong><br/>
             <span style="color:#666;font-size:12px">${point.accountName}</span><br/>
             <span style="color:${color};font-size:11px;font-weight:600">${point.status.toUpperCase().replace("_", " ")}</span>
           </div>
-        `).addTo(map);
-      }
+        `).addTo(layer);
+      });
 
       if (validPoints.length > 1) {
         const group = L.featureGroup(
@@ -103,26 +110,23 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
         );
         map.fitBounds(group.getBounds().pad(0.1));
       }
-
-      if (isMounted) leafletMapRef.current = map;
     })();
 
     return () => {
-      isMounted = false;
-      if (map) {
-        map.remove();
-        map = null;
+      cancelled = true;
+      if (leafletMapRef.current) {
+        (leafletMapRef.current as { remove: () => void }).remove();
         leafletMapRef.current = null;
+        leafletLoadedRef.current = false;
       }
     };
-  }, [view, validPoints.length, branchLocations]);
+  }, [view]); // only re-init when toggling to map view
 
-  // ── 3D Globe via CDN script ─────────────────────────────────────────────────
+  // ── 3D Globe via CDN ─────────────────────────────────────────────────────
   useEffect(() => {
     if (view !== "globe") return;
 
     let isMounted = true;
-    let cleanup: (() => void) | undefined;
 
     const init = () => {
       if (!isMounted || !globeContainerRef.current) return;
@@ -133,7 +137,6 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
 
       const container = globeContainerRef.current;
 
-      // Load globe.gl from CDN (avoids Three.js bundling issues in Vercel Edge)
       const loadGlobe = () => {
         if (!window.Globe) {
           const script = document.createElement("script");
@@ -157,7 +160,7 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
         let instance: GlobeInstance;
         try {
           instance = GlobeFn({});
-        } catch (_) {
+        } catch {
           if (isMounted) setGlobeError("Failed to initialize 3D globe. Please use 2D map.");
           return;
         }
@@ -173,7 +176,7 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
           .pointAltitude(0.01)
           .pointRadius(0.4)
           .pointLabel((p: BranchPoint) =>
-            `<div style="font-family:sans-serif;color:#222;padding:8px;min-width:140px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
+            `<div style="font-family:system-ui,sans-serif;color:#222;padding:8px;min-width:140px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
               <strong>${p.name}</strong><br/>
               <span style="color:#666;font-size:12px">${p.accountName}</span><br/>
               <span style="color:${STATUS_COLORS[p.status]};font-size:11px;font-weight:600">${p.status.toUpperCase().replace("_", " ")}</span>
@@ -186,19 +189,19 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
             controls.autoRotate = true;
             controls.autoRotateSpeed = 0.3;
           }
-        } catch (_) {}
+        } catch { /* ignore */ }
         globeInstanceRef.current = instance;
       };
 
-      // Check for WebGL
+      // WebGL check
       try {
         const canvas = document.createElement("canvas");
-        const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+        const gl = canvas.getContext("webgl") || canvas.getContext("webgl2");
         if (!gl) {
           if (isMounted) setGlobeError("WebGL not available on this device. Please use the 2D map view.");
           return;
         }
-      } catch (_) {
+      } catch {
         if (isMounted) setGlobeError("WebGL check failed. Please use the 2D map view.");
         return;
       }
@@ -210,11 +213,10 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
 
     return () => {
       isMounted = false;
-      cleanup?.();
       if (globeInstanceRef.current) {
         try {
           (globeInstanceRef.current as { destroy: () => void }).destroy();
-        } catch (_) { /* ignore */ }
+        } catch { /* ignore */ }
         globeInstanceRef.current = null;
       }
     };
@@ -273,7 +275,7 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
         ) : (
           <div
             ref={globeContainerRef}
-            className="w-full aspect-square max-h-[500px] rounded-lg overflow-hidden border border-outline-variant"
+            className="w-full h-[500px] max-h-[600px] rounded-lg overflow-hidden border border-outline-variant"
             style={{ background: "#0a0a1a" }}
           />
         )
@@ -291,7 +293,7 @@ export default function NetworkGlobe({ networkHealth, branchLocations = [] }: Pr
               </div>
             ))}
           </div>
-          <div ref={mapContainerRef} className="w-full aspect-square max-h-[500px] rounded-lg overflow-hidden border border-outline-variant" style={{ zIndex: 0 }} />
+          <div ref={mapContainerRef} className="w-full h-[500px] max-h-[600px] rounded-lg overflow-hidden border border-outline-variant" style={{ zIndex: 0 }} />
         </div>
       )}
     </div>

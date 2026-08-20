@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/hooks'
-import { fetchAnalytics, fetchOrders, fetchQuotes, fetchPendingCommands, acknowledgeCommand } from '../lib/queries'
+import { fetchAnalytics, fetchOrders, fetchQuotes, fetchPendingCommands, acknowledgeCommand, createPollingInterval } from '../lib/queries'
 import { useRemoteCommandsStore } from '../lib/store'
 import { AnalyticsData, Order, Quote, RemoteCommand } from '../lib/types'
 import { formatDistanceToNow } from 'date-fns'
@@ -31,6 +31,15 @@ export default function Dashboard() {
         .catch(console.error)
         .finally(() => setLoading(false))
     }
+  }, [supplier, setPendingCommands])
+
+  useEffect(() => {
+    if (!supplier) return
+    const cleanup = createPollingInterval(supplier.id, () => {
+      fetchPendingCommands(supplier.id).then(setPendingCommands).catch(console.error)
+      fetchOrders(supplier.id).then(data => setRecentOrders(data.slice(0, 5))).catch(console.error)
+    }, 30000)
+    return cleanup
   }, [supplier, setPendingCommands])
 
   const handleAcknowledge = async (commandId: string) => {
@@ -95,14 +104,14 @@ export default function Dashboard() {
     },
     {
       label: 'Total Revenue',
-      value: `$${(analytics?.totalRevenue || 0).toLocaleString()}`,
+      value: `TZS ${(analytics?.totalRevenue || 0).toLocaleString()}`,
       icon: 'payments',
       color: 'text-yellow-400',
       bg: 'bg-yellow-500/20',
     },
     {
       label: 'Avg Order Value',
-      value: `$${(analytics?.averageOrderValue || 0).toLocaleString()}`,
+      value: `TZS ${(analytics?.averageOrderValue || 0).toLocaleString()}`,
       icon: 'trending_up',
       color: 'text-purple-400',
       bg: 'bg-purple-500/20',
@@ -209,7 +218,7 @@ export default function Dashboard() {
                     <p className="text-sm text-gray-400">{order.buyer_name}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-medium text-white">${order.total.toLocaleString()}</p>
+                    <p className="font-medium text-white">TZS ${order.total.toLocaleString()}</p>
                     <p className="text-xs text-gray-400">
                       {formatDistanceToNow(new Date(order.created_at), { addSuffix: true })}
                     </p>
@@ -241,7 +250,7 @@ export default function Dashboard() {
                     <p className="text-sm text-gray-400">{quote.buyer_name}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-medium text-white">${quote.subtotal.toLocaleString()}</p>
+                    <p className="font-medium text-white">TZS ${quote.subtotal.toLocaleString()}</p>
                     <span
                       className={`inline-block px-2 py-0.5 rounded-full text-xs ${
                         quote.status === 'accepted'

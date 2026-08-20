@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
-import { Fe, Pe, Et, Mt } from "../lib/database";
-import { qs, runSyncCycle } from "../lib/sync";
+﻿import { useState, useEffect, useRef } from "react";
+import { queryDb, executeDb, generateId, nowIso } from "../lib/database";
+import { queueForSync, runSyncCycle } from "../lib/sync";
 import { PHARMACY_CATEGORIES } from "../lib/branding";
 import { useAuthStore } from "../lib/store";
 import type { Product, Batch } from "../types";
@@ -153,8 +153,8 @@ export default function Inventory() {
   }, []);
 
   async function loadData() {
-    const prods = await Fe("SELECT * FROM products ORDER BY generic_name");
-    const bats = await Fe("SELECT * FROM batches");
+    const prods = await queryDb("SELECT * FROM products ORDER BY generic_name");
+    const bats = await queryDb("SELECT * FROM batches");
     setProducts(prods);
     setBatches(bats);
     setIsLoading(false);
@@ -163,7 +163,7 @@ export default function Inventory() {
   async function loadProductDetails(product: Product) {
     const bats = batches.filter((b) => b.product_id === product.id);
     setProductBatches(bats);
-    const salesData = await Fe(`
+    const salesData = await queryDb(`
       SELECT si.*, s.created_at as sale_date, s.payment_method
       FROM sale_items si
       JOIN sales s ON s.id = si.sale_id
@@ -181,7 +181,7 @@ export default function Inventory() {
   }
 
   function getLowStockProducts(): Product[] {
-    return products.filter((p) => getStockForProduct(p.id) <= 10);
+    return products.filter((p) => getStockForProduct(p.id) <= (p.low_stock_threshold || 10));
   }
 
   const filteredProducts = products.filter((p) => {
@@ -221,7 +221,7 @@ export default function Inventory() {
             Inventory
           </h1>
           <p className="text-sm text-on-surface-variant mt-1">
-            {products.length} products · {batches.filter((b) => b.quantity > 0).length} batches in stock
+            {products.length} products Â· {batches.filter((b) => b.quantity > 0).length} batches in stock
           </p>
         </div>
         {isAdmin && (
@@ -329,10 +329,10 @@ export default function Inventory() {
                     {product.category || "Uncategorized"}
                   </td>
                   <td className="px-4 py-3 text-sm text-on-surface-variant">
-                    {product.formulation || "—"}
+                    {product.formulation || "â€”"}
                   </td>
                   <td className="px-4 py-3 text-sm font-mono">
-                    {product.barcode || "—"}
+                    {product.barcode || "â€”"}
                   </td>
                   <td
                     className={`px-4 py-3 text-right font-semibold ${
@@ -342,10 +342,10 @@ export default function Inventory() {
                     {stock}
                   </td>
                   <td className="px-4 py-3 text-right text-sm">
-                    ${cheapestBatch?.cost_price.toFixed(2) || "—"}
+                    ${cheapestBatch?.cost_price.toFixed(2) || "â€”"}
                   </td>
                   <td className="px-4 py-3 text-right text-sm">
-                    ${mostExpensiveBatch?.sale_price.toFixed(2) || "—"}
+                    ${mostExpensiveBatch?.sale_price.toFixed(2) || "â€”"}
                   </td>
                   {isAdmin && (
                     <td className="px-4 py-3">
@@ -392,12 +392,12 @@ export default function Inventory() {
             setEditingProduct(null);
           }}
           onSave={async (productData) => {
-            const now = Mt();
+            const now = nowIso();
             let productId: string;
             if (editingProduct) {
               productId = editingProduct.id;
-              await Pe(
-                `UPDATE products SET generic_name = ?, brand_name = ?, category = ?, formulation = ?, requires_prescription = ?, barcode = ?, default_expiry = ?, default_cost_price = ?, default_sale_price = ?, updated_at = ? WHERE id = ?`,
+              await executeDb(
+                `UPDATE products SET generic_name = ?, brand_name = ?, category = ?, formulation = ?, requires_prescription = ?, barcode = ?, default_expiry = ?, default_cost_price = ?, default_sale_price = ?, low_stock_threshold = ?, notify_threshold = ?, updated_at = ? WHERE id = ?`,
                 [
                   productData.generic_name,
                   productData.brand_name,
@@ -408,11 +408,13 @@ export default function Inventory() {
                   productData.default_expiry || null,
                   productData.default_cost_price || null,
                   productData.default_sale_price || null,
+                  productData.low_stock_threshold || 10,
+                  productData.notify_threshold || 5,
                   now,
                   editingProduct.id,
                 ]
               );
-              await qs("products", productId, "update", {
+              await queueForSync("products", productId, "update", {
                 id: productId,
                 generic_name: productData.generic_name,
                 brand_name: productData.brand_name,
@@ -423,12 +425,14 @@ export default function Inventory() {
                 default_expiry: productData.default_expiry || null,
                 default_cost_price: productData.default_cost_price || null,
                 default_sale_price: productData.default_sale_price || null,
+                low_stock_threshold: productData.low_stock_threshold || 10,
+                notify_threshold: productData.notify_threshold || 5,
                 updated_at: now,
               });
             } else {
-              productId = Et();
-              await Pe(
-                `INSERT INTO products (id, generic_name, brand_name, category, formulation, requires_prescription, barcode, default_expiry, default_cost_price, default_sale_price, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+              productId = generateId();
+              await executeDb(
+                `INSERT INTO products (id, generic_name, brand_name, category, formulation, requires_prescription, barcode, default_expiry, default_cost_price, default_sale_price, low_stock_threshold, notify_threshold, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
                 [
                   productId,
                   productData.generic_name,
@@ -440,10 +444,12 @@ export default function Inventory() {
                   productData.default_expiry || null,
                   productData.default_cost_price || null,
                   productData.default_sale_price || null,
+                  productData.low_stock_threshold || 10,
+                  productData.notify_threshold || 5,
                   now,
                 ]
               );
-              await qs("products", productId, "insert", {
+              await queueForSync("products", productId, "insert", {
                 id: productId,
                 generic_name: productData.generic_name,
                 brand_name: productData.brand_name,
@@ -454,15 +460,17 @@ export default function Inventory() {
                 default_expiry: productData.default_expiry || null,
                 default_cost_price: productData.default_cost_price || null,
                 default_sale_price: productData.default_sale_price || null,
+                low_stock_threshold: productData.low_stock_threshold || 10,
+                notify_threshold: productData.notify_threshold || 5,
                 updated_at: now,
               });
             }
 
             if (productData.quantity > 0) {
-              const branchRes = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'");
+              const branchRes = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'");
               const branchId = branchRes.length > 0 ? JSON.parse(branchRes[0].value) : null;
-              const batchId = Et();
-              await Pe(
+              const batchId = generateId();
+              await executeDb(
                 `INSERT INTO batches (id, branch_id, product_id, batch_number, quantity, cost_price, sale_price, expiry_date, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
                 [
                   batchId,
@@ -476,7 +484,7 @@ export default function Inventory() {
                   now,
                 ]
               );
-              await qs("batches", batchId, "insert", {
+              await queueForSync("batches", batchId, "insert", {
                 id: batchId,
                 branch_id: branchId,
                 product_id: productId,
@@ -514,6 +522,8 @@ interface ProductModalProps {
     default_expiry?: string;
     default_cost_price?: number;
     default_sale_price?: number;
+    low_stock_threshold: number;
+    notify_threshold: number;
   }) => void;
 }
 
@@ -532,6 +542,8 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
   const [defaultCostPrice, setDefaultCostPrice] = useState(product?.default_cost_price?.toString() || "");
   const [defaultSalePrice, setDefaultSalePrice] = useState(product?.default_sale_price?.toString() || "");
   const [quantity, setQuantity] = useState(product ? "0" : "1");
+  const [lowStockThreshold, setLowStockThreshold] = useState(product?.low_stock_threshold?.toString() || "10");
+  const [notifyThreshold, setNotifyThreshold] = useState(product?.notify_threshold?.toString() || "5");
   const [showScanner, setShowScanner] = useState(false);
 
   const inputClass =
@@ -551,6 +563,8 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
       default_expiry: defaultExpiry || undefined,
       default_cost_price: defaultCostPrice ? parseFloat(defaultCostPrice) : undefined,
       default_sale_price: defaultSalePrice ? parseFloat(defaultSalePrice) : undefined,
+      low_stock_threshold: parseInt(lowStockThreshold, 10) || 10,
+      notify_threshold: parseInt(notifyThreshold, 10) || 5,
     });
   }
 
@@ -700,6 +714,33 @@ function ProductModal({ product, onClose, onSave }: ProductModalProps) {
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>Low Stock Threshold</label>
+              <input
+                type="number"
+                min="0"
+                value={lowStockThreshold}
+                onChange={(e) => setLowStockThreshold(e.target.value)}
+                className={inputClass}
+                placeholder="10"
+              />
+              <p className="text-xs text-on-surface-variant mt-1">Alert when stock falls below this</p>
+            </div>
+            <div>
+              <label className={labelClass}>Notify Threshold</label>
+              <input
+                type="number"
+                min="0"
+                value={notifyThreshold}
+                onChange={(e) => setNotifyThreshold(e.target.value)}
+                className={inputClass}
+                placeholder="5"
+              />
+              <p className="text-xs text-on-surface-variant mt-1">Urgent alert when stock falls below this</p>
+            </div>
+          </div>
+
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -823,8 +864,8 @@ function ProductDetailModal({ product, batches, sales, onClose }: ProductDetailM
                         <td className="px-4 py-2 font-mono text-xs">{batch.id.slice(0, 8)}...</td>
                         <td className="px-4 py-2 text-right">{batch.expiry_date ? new Date(batch.expiry_date).toLocaleDateString() : 'N/A'}</td>
                         <td className={`px-4 py-2 text-right font-semibold ${batch.quantity <= 10 ? 'text-error' : ''}`}>{batch.quantity}</td>
-                        <td className="px-4 py-2 text-right">${batch.cost_price.toFixed(2)}</td>
-                        <td className="px-4 py-2 text-right">${batch.sale_price.toFixed(2)}</td>
+                        <td className="px-4 py-2 text-right">TZS ${batch.cost_price.toLocaleString()}</td>
+                        <td className="px-4 py-2 text-right">TZS ${batch.sale_price.toLocaleString()}</td>
                       </tr>
                     ))
                   )}
@@ -851,7 +892,7 @@ function ProductDetailModal({ product, batches, sales, onClose }: ProductDetailM
                       <tr key={idx} className="border-t border-outline-variant">
                         <td className="px-4 py-2">{sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : 'N/A'}</td>
                         <td className="px-4 py-2 text-right">{sale.quantity}</td>
-                        <td className="px-4 py-2 text-right">${sale.unit_price.toFixed(2)}</td>
+                        <td className="px-4 py-2 text-right">TZS ${sale.unit_price.toLocaleString()}</td>
                         <td className="px-4 py-2 text-right">{sale.payment_method || 'N/A'}</td>
                       </tr>
                     ))}

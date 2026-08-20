@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Fe } from '../lib/database'
+﻿import { useState, useEffect } from 'react'
+import { queryDb } from '../lib/database'
 
 interface ReceiptData {
   id: string
@@ -34,7 +34,7 @@ export default function Records() {
 
   async function loadReceipts() {
     setIsLoading(true)
-    const salesData = await Fe(`
+    const salesData = await queryDb(`
       SELECT s.*, r.receipt_number, r.id as receipt_id, o.name as operator_name
       FROM sales s
       LEFT JOIN receipts r ON r.sale_id = s.id
@@ -43,7 +43,7 @@ export default function Records() {
     `)
 
     const receiptPromises = salesData.map(async (sale: any) => {
-      const items = await Fe(`
+      const items = await queryDb(`
         SELECT si.quantity, si.unit_price, p.generic_name
         FROM sale_items si
         LEFT JOIN batches b ON b.id = si.batch_id
@@ -165,7 +165,7 @@ export default function Records() {
                   </td>
                   <td className="px-4 py-3 text-sm">{receipt.operator_name || 'Unknown'}</td>
                   <td className="px-4 py-3 text-sm">{receipt.items.length} items</td>
-                  <td className="px-4 py-3 text-right font-semibold">${receipt.total.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right font-semibold">TZS {receipt.total.toLocaleString()}</td>
                   <td className="px-4 py-3">
                     <span className="px-2 py-1 bg-outline-variant/50 rounded text-xs font-medium">
                       {receipt.payment_method?.replace('_', ' ').toUpperCase() || 'N/A'}
@@ -251,28 +251,28 @@ function ReceiptModal({ receipt, onClose }: ReceiptModalProps) {
             {receipt.tax > 0 && (
               <div className="flex items-center justify-between text-sm">
                 <span className="text-on-surface-variant">Tax</span>
-                <span>${receipt.tax.toFixed(2)}</span>
+                <span>TZS {receipt.tax.toLocaleString()}</span>
               </div>
             )}
             {receipt.discount > 0 && (
               <div className="flex items-center justify-between text-sm text-secondary">
                 <span>Discount</span>
-                <span>-${receipt.discount.toFixed(2)}</span>
+                <span>-TZS {receipt.discount.toLocaleString()}</span>
               </div>
             )}
             <div className="flex items-center justify-between font-bold text-lg pt-2 border-t border-outline-variant">
               <span>Total</span>
-              <span>${receipt.total.toFixed(2)}</span>
+              <span>TZS {receipt.total.toLocaleString()}</span>
             </div>
             {receipt.tender > 0 && (
               <>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-on-surface-variant">Tendered</span>
-                  <span>${receipt.tender.toFixed(2)}</span>
+                  <span>TZS {receipt.tender.toLocaleString()}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-on-surface-variant">Change</span>
-                  <span className="text-secondary font-semibold">${receipt.change_due.toFixed(2)}</span>
+                  <span className="text-secondary font-semibold">TZS {receipt.change_due.toLocaleString()}</span>
                 </div>
               </>
             )}

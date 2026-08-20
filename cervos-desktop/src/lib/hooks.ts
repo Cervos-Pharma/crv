@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+﻿import { useEffect } from 'react'
 import { useAuthStore } from './store'
 import { fetchOperator } from './queries'
 import type { Operator } from '../types'

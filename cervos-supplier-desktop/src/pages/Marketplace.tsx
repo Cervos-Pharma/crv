@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 
 interface MarketplaceProduct {
   id: string
@@ -67,7 +67,7 @@ export default function Marketplace() {
               <h3 className="font-semibold text-white">{product.name}</h3>
               <p className="text-sm text-gray-400 mt-1">{product.supplier}</p>
               <div className="flex items-center justify-between mt-4">
-                <span className="text-accent font-medium">${product.price.toFixed(2)}</span>
+                <span className="text-accent font-medium">TZS ${product.price.toLocaleString()}</span>
                 <span className="text-xs text-gray-500 bg-surface px-2 py-1 rounded">{product.category}</span>
               </div>
             </div>

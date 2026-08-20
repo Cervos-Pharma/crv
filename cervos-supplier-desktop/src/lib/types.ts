@@ -1,4 +1,4 @@
-export interface Supplier {
+﻿export interface Supplier {
   id: string
   email: string
   company_name: string
@@ -26,16 +26,25 @@ export interface RemoteCommand {
 export interface Product {
   id: string
   supplier_id: string
+  generic_name: string
+  brand_name: string
   name: string
   description: string
   sku: string
+  barcode: string
   category: string
+  formulation: string
+  requires_prescription: boolean
   subcategory: string
   price: number
+  default_cost_price: number
+  default_sale_price: number
   currency: string
   min_order_quantity: number
   stock_quantity: number
   stock_status: 'in_stock' | 'low_stock' | 'out_of_stock' | 'discontinued'
+  low_stock_threshold: number
+  notify_threshold: number
   images: string[]
   specifications: Record<string, string>
   tags: string[]
@@ -132,3 +141,39 @@ export interface AnalyticsData {
   revenueByMonth: { month: string; revenue: number }[]
   topProducts: { name: string; quantity: number; revenue: number }[]
 }
+
+
+export const PHARMACY_CATEGORIES = [
+  "Analgesics",
+  "Antibiotics",
+  "Antivirals",
+  "Antifungals",
+  "Antihistamines",
+  "Cardiovascular",
+  "Diabetes Care",
+  "Digestive Health",
+  "Eye Care",
+  "Mental Health",
+  "Respiratory",
+  "Skin Care",
+  "Vitamins & Supplements",
+  "Other",
+]
+
+export const FORMULATIONS = [
+  "Tablet",
+  "Capsule",
+  "Syrup",
+  "Injection",
+  "Cream",
+  "Ointment",
+  "Drops",
+  "Inhaler",
+  "Suppository",
+  "Powder",
+  "Solution",
+  "Suspension",
+  "Gel",
+  "Patch",
+  "Other",
+]

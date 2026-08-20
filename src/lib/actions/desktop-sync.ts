@@ -1,22 +1,22 @@
-/**
+﻿/**
  * @file lib/actions/desktop-sync.ts
  * @description Server actions + API route handlers for the Cervos desktop endpoint.
  *
  * The desktop app (Electron/SQLite at each pharmacy branch) syncs data by calling
- * `GET /api/sync?since=<last_synced_at>` — an API route (not a "use server" action)
+ * `GET /api/sync?since=<last_synced_at>` â€” an API route (not a "use server" action)
  * that uses the session cookie for auth and returns delta changes across all tables.
  *
  * Subscription status is checked per-branch on every sync:
- *   - account subscription is active → branch access granted
- *   - account is trial → branch is trial (trial_ends_at)
- *   - account is grace → branch is grace (grace_ends_at)
- *   - account is locked → branch is locked (desktop goes into read-only mode)
+ *   - account subscription is active â†’ branch access granted
+ *   - account is trial â†’ branch is trial (trial_ends_at)
+ *   - account is grace â†’ branch is grace (grace_ends_at)
+ *   - account is locked â†’ branch is locked (desktop goes into read-only mode)
  *
  * For HQ-managed unlocks, `manualUnlockBranch` in hq.ts sets status back to active.
  *
  * @environment NEXT_PUBLIC_SUPABASE_URL
  * @environment NEXT_PUBLIC_SUPABASE_ANON_KEY
- * @environment SUPABASE_SERVICE_ROLE_KEY  — used only in the sync API route for
+ * @environment SUPABASE_SERVICE_ROLE_KEY  â€” used only in the sync API route for
  *          writes (upserting syncacknowledgements), never in read-only paths.
  */
 
@@ -31,7 +31,7 @@ function addDays(days: number): string {
   return new Date(Date.now() + days * 86400000).toISOString();
 }
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type BranchStatus = "active" | "trial" | "grace" | "locked";
 
@@ -82,6 +82,22 @@ export interface SyncResponse {
     unit_desc: string | null;
     updated_at: string;
   }>;
+  sale_items: Array<{
+    id: string;
+    sale_id: string;
+    batch_id: string;
+    quantity: number;
+    unit_price: number;
+    created_at: string | null;
+  }>;
+  operators: Array<{
+    id: string;
+    branch_id: string;
+    name: string;
+    pin_hash: string;
+    role: string;
+    created_at: string | null;
+  }>;
   commands: Array<{
     id: string;
     branch_id: string;
@@ -93,11 +109,11 @@ export interface SyncResponse {
   suspended?: boolean;
 }
 
-// ─── Subscription helpers ─────────────────────────────────────────────────────
+// â”€â”€â”€ Subscription helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Returns the effective branch access status for the desktop endpoint.
- * Mirrors the subscription logic from the shared migration — trial, grace,
+ * Mirrors the subscription logic from the shared migration â€” trial, grace,
  * and locked states are derived from the account's subscription + branch-level stamps.
  *
  * Called by: the sync API route (read-only, uses anon client with RLS).
@@ -172,7 +188,7 @@ function resolveStatus(
 /**
  * Evaluates and auto-transitions a branch's subscription status.
  * Called during every sync to enforce the lifecycle:
- *   trial (7 days) → grace (3 days) → locked
+ *   trial (7 days) â†’ grace (3 days) â†’ locked
  * Also locks branches that have been offline for > 30 days while not on active plan.
  *
  * Uses service-role client to bypass RLS.
@@ -191,7 +207,7 @@ async function transitionBranchSubscription(
   const patch: Record<string, unknown> = {};
   let newStatus = currentStatus;
 
-  // Trial → Grace transition
+  // Trial â†’ Grace transition
   if (currentStatus === "trial" && trialEndsAt && new Date(trialEndsAt) <= now) {
     patch.grace_ends_at = addDays(GRACE_DAYS);
     patch.trial_ends_at = null;
@@ -199,7 +215,7 @@ async function transitionBranchSubscription(
     newStatus = "grace";
   }
 
-  // Grace → Locked transition
+  // Grace â†’ Locked transition
   if ((currentStatus === "grace" || newStatus === "grace") && graceEndsAt && new Date(graceEndsAt) <= now) {
     patch.subscription_status = "locked";
     patch.grace_ends_at = null;
@@ -228,11 +244,11 @@ async function transitionBranchSubscription(
   return newStatus;
 }
 
-// ─── Delta-sync ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Delta-sync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Returns all records modified since `since` across branches, batches, and products.
- * Used by `GET /api/sync` — the desktop endpoint's primary sync endpoint.
+ * Used by `GET /api/sync` â€” the desktop endpoint's primary sync endpoint.
  *
  * The response always includes `serverTime` so the client can update its
  * `last_synced_at` to the server's clock (prevents clock-skew drift).
@@ -276,6 +292,8 @@ export async function getSyncData(since: string, accountId: string): Promise<Syn
       branches: (lockedBranches ?? []).map((b) => ({ ...b, subscription_status: "locked" })) as SyncResponse["branches"],
       batches: [],
       products: [],
+      sale_items: [],
+      operators: [],
       commands: (commands ?? []) as SyncResponse["commands"],
       serverTime: new Date().toISOString(),
       suspended: true,
@@ -297,7 +315,7 @@ export async function getSyncData(since: string, accountId: string): Promise<Syn
 
   const branchesModifiedSince = new Set((branchesModified ?? []).map((b: { id: string }) => b.id));
 
-  // Auto-transition subscription status for all branches (trial→grace→locked, offline lock)
+  // Auto-transition subscription status for all branches (trialâ†’graceâ†’locked, offline lock)
   const transitionedBranches: SyncResponse["branches"] = [];
 
   for (const branch of (allBranches ?? []) as SyncResponse["branches"]) {
@@ -321,16 +339,33 @@ export async function getSyncData(since: string, accountId: string): Promise<Syn
 
   const branchIds = (allBranches ?? []).map((b: { id: string }) => b.id);
 
-  const [batchesResult, productsResult, commandsResult] = await Promise.all([
+  const [batchesResult, productsResult, commandsResult, saleItemsResult, operatorsResult] = await Promise.all([
     branchIds.length > 0
       ? supabase.from("batches").select("id, branch_id, product_id, batch_number, quantity, cost_price, sale_price, expiry_date, sync_version, updated_at").in("branch_id", branchIds).gt("updated_at", since)
       : Promise.resolve({ data: [] }),
     supabase
       .from("products")
-      .select("id, generic_name, brand_name, category, requires_prescription, unit_desc, updated_at")
+      .select("id, generic_name, brand_name, category, formulation, requires_prescription, barcode, unit_desc, default_expiry, default_cost_price, default_sale_price, low_stock_threshold, notify_threshold, updated_at")
       .gt("updated_at", since),
     branchIds.length > 0
       ? supabase.from("branch_commands").select("id, branch_id, command, reason, created_at").in("branch_id", branchIds).eq("status", "pending")
+      : Promise.resolve({ data: [] }),
+    branchIds.length > 0
+      ? (async () => {
+          const { data: branchSales } = await supabase
+            .from("sales")
+            .select("id")
+            .in("branch_id", branchIds)
+            .gt("created_at", since);
+          if (!branchSales || branchSales.length === 0) return { data: [] };
+          return supabase
+            .from("sale_items")
+            .select("id, sale_id, batch_id, quantity, unit_price, created_at")
+            .in("sale_id", branchSales.map((s: { id: string }) => s.id));
+        })()
+      : Promise.resolve({ data: [] }),
+    branchIds.length > 0
+      ? supabase.from("operators").select("id, branch_id, name, pin_hash, role, created_at").in("branch_id", branchIds)
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -338,6 +373,8 @@ export async function getSyncData(since: string, accountId: string): Promise<Syn
     branches: transitionedBranches,
     batches: (batchesResult.data ?? []) as SyncResponse["batches"],
     products: (productsResult.data ?? []) as SyncResponse["products"],
+    sale_items: (saleItemsResult.data ?? []) as SyncResponse["sale_items"],
+    operators: (operatorsResult.data ?? []) as SyncResponse["operators"],
     commands: (commandsResult.data ?? []) as SyncResponse["commands"],
     serverTime: new Date().toISOString(),
   };

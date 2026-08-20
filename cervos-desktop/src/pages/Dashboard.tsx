@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Fe } from '../lib/database'
+import { queryDb } from '../lib/database'
 import {
   LineChart,
   Line,
@@ -26,7 +26,7 @@ const EXPIRY_DAYS_THRESHOLD = 30
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData>({
-    currency: 'USD',
+    currency: 'TZS',
     todayRevenue: 0,
     todaySales: 0,
     pendingSync: 0,
@@ -42,12 +42,12 @@ export default function Dashboard() {
 
   async function loadData() {
     const today = new Date().toISOString().slice(0, 10)
-    const sales = await Fe(
+    const sales = await queryDb(
       `SELECT s.*, br.currency FROM sales s
        LEFT JOIN branches br ON br.id = s.branch_id
        ORDER BY s.created_at DESC LIMIT 50`
     )
-    const batches = await Fe('SELECT * FROM batches')
+    const batches = await queryDb('SELECT * FROM batches')
 
     const todaySales = sales.filter(
       (s: any) => s.created_at?.slice(0, 10) === today
@@ -95,7 +95,7 @@ export default function Dashboard() {
     }))
 
     setData({
-      currency: 'USD',
+      currency: 'TZS',
       todayRevenue,
       todaySales: todaySales.length,
       pendingSync,
@@ -119,7 +119,7 @@ export default function Dashboard() {
   const stats = [
     {
       label: "Today's revenue",
-      value: `$${data.todayRevenue.toFixed(2)}`,
+      value: `TZS ${data.todayRevenue.toLocaleString()}`,
       sub: `${data.todaySales} sales`,
     },
     {
@@ -178,7 +178,7 @@ export default function Dashboard() {
                 <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip
                   formatter={(value: number) => [
-                    `$${value.toFixed(2)}`,
+                    `TZS ${value.toLocaleString()}`,
                     'Revenue',
                   ]}
                 />

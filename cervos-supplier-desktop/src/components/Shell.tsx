@@ -1,5 +1,6 @@
+﻿import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { useUIStore } from '../lib/store'
+import { useUIStore, useStore } from '../lib/store'
 import { useSubscription } from '../lib/hooks'
 import NotificationsPanel from './NotificationsPanel'
 
@@ -21,6 +22,17 @@ export default function Shell() {
   const location = useLocation()
   const { sidebarCollapsed, toggleSidebar, notificationsOpen, setNotificationsOpen } = useUIStore()
   const { subscriptionStatus } = useSubscription()
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    const supplierId = useStore.getState().supplier?.id
+    if (!supplierId) return
+    import('../lib/queries').then(({ fetchNotifications }) => {
+      fetchNotifications(supplierId).then((nots: any[]) => {
+        setUnreadCount(nots.filter((n: any) => !n.is_read).length)
+      }).catch(() => {})
+    })
+  }, [notificationsOpen])
 
   const getSubscriptionDotColor = () => {
     switch (subscriptionStatus) {
@@ -107,7 +119,7 @@ export default function Shell() {
               className="relative p-2 rounded-lg hover:bg-surface-300 transition-colors"
             >
               <span className="material-symbols-outlined text-gray-400">notifications</span>
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+              {unreadCount > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>}
             </button>
           </div>
         </header>

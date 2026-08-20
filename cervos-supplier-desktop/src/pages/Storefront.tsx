@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { useAuth } from '../lib/hooks'
 import { fetchProducts } from '../lib/queries'
 import { Product } from '../lib/types'
@@ -44,19 +44,19 @@ export default function Storefront() {
             >
               <div className="aspect-square bg-surface-200 flex items-center justify-center">
                 {product.images && product.images[0] ? (
-                  <img src={product.images[0]} alt={product.name} className="object-cover w-full h-full" />
+                  <img src={product.images[0]} alt={product.generic_name || product.name} className="object-cover w-full h-full" />
                 ) : (
                   <span className="material-symbols-outlined text-6xl text-gray-600">inventory_2</span>
                 )}
               </div>
               <div className="p-6">
                 <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-semibold text-white">{product.name}</h3>
+                  <h3 className="font-semibold text-white">{product.generic_name || product.name}</h3>
                   <StockBadge status={product.stock_status} showLabel={false} />
                 </div>
                 <p className="text-sm text-gray-400 mb-4 line-clamp-2">{product.description}</p>
                 <div className="flex items-center justify-between">
-                  <span className="text-xl font-bold text-white">${product.price.toFixed(2)}</span>
+                  <span className="text-xl font-bold text-white">TZS ${product.price.toLocaleString()}</span>
                   <span className="text-sm text-gray-500">{product.stock_quantity} in stock</span>
                 </div>
               </div>

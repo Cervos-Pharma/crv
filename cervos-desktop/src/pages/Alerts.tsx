@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Fe } from '../lib/database'
+﻿import { useState, useEffect } from 'react'
+import { queryDb } from '../lib/database'
 import { useAuthStore } from '../lib/store'
 
 interface SubscriptionInfo {
@@ -19,9 +19,9 @@ export default function Alerts() {
   }, [])
 
   async function loadSubscription() {
-    const statusResult = await Fe("SELECT value FROM app_settings WHERE key = 'subscription_status'")
-    const graceResult = await Fe("SELECT value FROM app_settings WHERE key = 'grace_ends_at'")
-    const trialResult = await Fe("SELECT value FROM app_settings WHERE key = 'trial_ends_at'")
+    const statusResult = await queryDb("SELECT value FROM app_settings WHERE key = 'subscription_status'")
+    const graceResult = await queryDb("SELECT value FROM app_settings WHERE key = 'grace_ends_at'")
+    const trialResult = await queryDb("SELECT value FROM app_settings WHERE key = 'trial_ends_at'")
 
     const status = statusResult.length > 0 ? JSON.parse(statusResult[0].value) : 'trial'
     const graceEndsAt = graceResult.length > 0 ? JSON.parse(graceResult[0].value) : null

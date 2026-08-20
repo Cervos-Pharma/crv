@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+﻿import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { useAuth } from './lib/hooks'
 import Shell from './components/Shell'
@@ -15,7 +15,7 @@ import Onboarding from './pages/Onboarding'
 import Records from './pages/Records'
 import Alerts from './pages/Alerts'
 import { initDb } from './lib/database'
-import { Fe } from './lib/database'
+import { queryDb } from './lib/database'
 import { startAutoSync, stopAutoSync, checkSubscriptionBlocked } from './lib/sync'
 import { useSyncStore } from './lib/store'
 
@@ -69,17 +69,17 @@ function OnboardingRoute() {
         await initDb()
 
         // Check if centre_name exists AND there's at least one operator
-        const centreResult = await Fe("SELECT value FROM app_settings WHERE key = 'centre_name'")
+        const centreResult = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_name'")
         if (centreResult.length === 0) {
           setIsOnboarded(false)
           return
         }
 
         // Centre exists - check if there's a branch_id with operators
-        const branchResult = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
+        const branchResult = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'")
         if (branchResult.length > 0) {
           const branchId = JSON.parse(branchResult[0].value)
-          const ops = await Fe('SELECT id FROM operators WHERE branch_id = ?', [branchId])
+          const ops = await queryDb('SELECT id FROM operators WHERE branch_id = ?', [branchId])
           if (ops.length > 0) {
             // Centre configured AND has operators - go to login
             setIsOnboarded(true)

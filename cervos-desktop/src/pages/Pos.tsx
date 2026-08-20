@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
-import { Fe, Pe, Et, Mt } from "../lib/database";
-import { qs, processSyncQueue, checkSubscriptionBlocked } from "../lib/sync";
+﻿import { useState, useEffect, useRef } from "react";
+import { queryDb, executeDb, generateId, nowIso } from "../lib/database";
+import { queueForSync, processSyncQueue, checkSubscriptionBlocked } from "../lib/sync";
 import { useAuthStore } from "../lib/store";
 import type { Product, Batch } from "../types";
 
@@ -167,8 +167,8 @@ export default function Pos() {
   }, []);
 
   async function loadData() {
-    const prods = await Fe("SELECT * FROM products");
-    const bats = await Fe("SELECT * FROM batches WHERE quantity > 0");
+    const prods = await queryDb("SELECT * FROM products");
+    const bats = await queryDb("SELECT * FROM batches WHERE quantity > 0");
     setProducts(prods);
     setBatches(bats);
   }
@@ -294,17 +294,17 @@ export default function Pos() {
 
     setIsProcessing(true);
     try {
-      const branchResult = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
+      const branchResult = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'")
       const branchId = branchResult.length > 0 ? JSON.parse(branchResult[0].value) : null
 
-      const saleId = Et();
-      const receiptId = Et();
+      const saleId = generateId();
+      const receiptId = generateId();
       const receiptNumber = `RCP-${Date.now().toString(36).toUpperCase()}`;
-      const now = Mt();
+      const now = nowIso();
       const total = getTotal();
       const tender = parseFloat(tenderAmount || "0") || total;
 
-      await Pe(
+      await executeDb(
         `INSERT INTO sales (id, branch_id, operator_id, total, discount, tax, tender, change_due, payment_method, payment_ref, created_at, synced)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
@@ -324,23 +324,23 @@ export default function Pos() {
       );
 
       for (const item of cart) {
-        const saleItemId = Et();
-        await Pe(
+        const saleItemId = generateId();
+        await executeDb(
           `INSERT INTO sale_items (id, sale_id, batch_id, quantity, unit_price) VALUES (?,?,?,?,?)`,
           [saleItemId, saleId, item.batch.id, item.quantity, item.unit_price]
         );
-        await Pe(
-          `UPDATE batches SET quantity = quantity - ? WHERE id = ?`,
-          [item.quantity, item.batch.id]
+        await executeDb(
+          `UPDATE batches SET quantity = quantity - ?, updated_at = ? WHERE id = ?`,
+          [item.quantity, nowIso(), item.batch.id]
         );
       }
 
-      await Pe(
+      await executeDb(
         `INSERT INTO receipts (id, sale_id, receipt_number, created_at) VALUES (?,?,?,?)`,
         [receiptId, saleId, receiptNumber, now]
       );
 
-      await qs("sales", saleId, "insert", {
+      await queueForSync("sales", saleId, "insert", {
         id: saleId,
         branch_id: branchId,
         operator_id: currentOperator?.id || null,
@@ -352,6 +352,16 @@ export default function Pos() {
         payment_method: paymentMethod,
         created_at: now,
       });
+
+      for (const item of cart) {
+        await queueForSync("sale_items", `${saleId}-${item.batch.id}`, "insert", {
+          id: `${saleId}-${item.batch.id}`,
+          sale_id: saleId,
+          batch_id: item.batch.id,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+        });
+      }
 
       setCart([]);
       setTenderAmount("");
@@ -436,7 +446,7 @@ export default function Pos() {
                       </p>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      ${item.unit_price.toFixed(2)}
+                      TZS {item.unit_price.toLocaleString()}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-2">
@@ -534,27 +544,27 @@ export default function Pos() {
         <div className="border-t border-outline-variant pt-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-on-surface-variant">Subtotal</span>
-            <span>${getSubtotal().toFixed(2)}</span>
+            <span>TZS {getSubtotal().toLocaleString()}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-on-surface-variant">Tax (10%)</span>
-            <span>${getTax().toFixed(2)}</span>
+            <span>TZS {getTax().toLocaleString()}</span>
           </div>
           {parseFloat(discount || "0") > 0 && (
             <div className="flex justify-between text-sm text-secondary">
               <span>Discount</span>
-              <span>-${parseFloat(discount || "0").toFixed(2)}</span>
+              <span>-TZS {parseFloat(discount || "0").toLocaleString()}</span>
             </div>
           )}
           <div className="flex justify-between font-headline text-xl font-black">
             <span>Total</span>
-            <span>${getTotal().toFixed(2)}</span>
+            <span>TZS {getTotal().toLocaleString()}</span>
           </div>
           {parseFloat(tenderAmount || "0") > 0 && (
             <div className="flex justify-between text-sm">
               <span className="text-on-surface-variant">Change</span>
               <span className="text-secondary font-semibold">
-                ${getChange().toFixed(2)}
+                TZS {getChange().toLocaleString()}
               </span>
             </div>
           )}

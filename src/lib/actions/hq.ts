@@ -1,24 +1,24 @@
-/**
+﻿/**
  * @file lib/actions/hq.ts
  * @description Server actions for the Cervos HQ Console.
  *
  * ALL actions in this file require a valid HQ session cookie (`hq_sess`).
  * The session is established via `loginHQ` (email + password checked against
  * the `hq_admins` table) and validated with the HMAC-derived token in
- * `lib/hq-auth.ts`. The raw `HQ_SECRET` env var is never stored anywhere �?" only a
+ * `lib/hq-auth.ts`. The raw `HQ_SECRET` env var is never stored anywhere ï¿½?" only a
  * constant-time HMAC of it. Passwords are stored as salted scrypt hashes in
- * `hq_admins` �?" the plaintext password is never stored or logged.
+ * `hq_admins` ï¿½?" the plaintext password is never stored or logged.
  *
  * Supabase tables touched:
- *   - hq_admins      �?" read (loginHQ) — service role only, no RLS policies
- *   - accounts       �?" read (getAllAccounts, getHQStats) / update (enableDownload)
- *   - branches       �?" read count (getHQStats)
- *   - quote_requests �?" read (getAllQuoteRequests, getHQStats) / update (markQuoteContacted)
+ *   - hq_admins      ï¿½?" read (loginHQ) â€” service role only, no RLS policies
+ *   - accounts       ï¿½?" read (getAllAccounts, getHQStats) / update (enableDownload)
+ *   - branches       ï¿½?" read count (getHQStats)
+ *   - quote_requests ï¿½?" read (getAllQuoteRequests, getHQStats) / update (markQuoteContacted)
  *
  * All data-mutating actions use the Supabase SERVICE ROLE client, which
  * bypasses Row Level Security. Never expose the service-role key to the client.
  *
- * @environment HQ_SECRET          �?" must be �%� 32 chars, not the placeholder value
+ * @environment HQ_SECRET          ï¿½?" must be ï¿½%ï¿½ 32 chars, not the placeholder value
  * @environment NEXT_PUBLIC_SUPABASE_URL
  * @environment SUPABASE_SERVICE_ROLE_KEY
  */
@@ -33,12 +33,12 @@ import {
   deriveHQSessionToken,
 } from "@/lib/hq-auth";
 
-// ─── Constants ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Guard against the default placeholder value in .env.local */
 const PLACEHOLDER_SECRET = "placeholder-hq-secret";
 
-/** HQ session cookie lifespan — 8 hours */
+/** HQ session cookie lifespan â€” 8 hours */
 const COOKIE_MAX_AGE = 60 * 60 * 8;
 
 /** Subscription durations */
@@ -49,7 +49,7 @@ function addDays(days: number): string {
   return new Date(Date.now() + days * 86400000).toISOString();
 }
 
-// ─── Private helpers ────────────────────────────────────────────────────────
+// â”€â”€â”€ Private helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Validates the current request's HQ session cookie.
@@ -63,7 +63,7 @@ async function assertHQAuth(): Promise<{ error: string | null }> {
   return { error: null };
 }
 
-// ─── Public actions ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Public actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Placeholder hash used to equalise login timing when the email doesn't exist. */
 const LOGIN_DUMMY_HASH =
@@ -104,7 +104,7 @@ function verifyHQPassword(password: string, stored: string): boolean {
  * credentials don't match (constant-time compare).
  *
  * @param input - `{ email, password }` from the login form
- * @returns `{ error }` — null on success, message string on failure
+ * @returns `{ error }` â€” null on success, message string on failure
  */
 export async function loginHQ(input: {
   email: string;
@@ -154,7 +154,7 @@ export async function loginHQ(input: {
  * Fetches all supplier quote requests, ordered newest-first.
  * Requires a valid HQ session.
  *
- * @returns `{ data, error }` — data is the full quote_requests rows or null on failure
+ * @returns `{ data, error }` â€” data is the full quote_requests rows or null on failure
  */
 export async function getAllQuoteRequests(): Promise<{
   data: {
@@ -184,11 +184,11 @@ export async function getAllQuoteRequests(): Promise<{
 }
 
 /**
- * Marks a quote request as "contacted" — sets `status = 'contacted'`.
+ * Marks a quote request as "contacted" â€” sets `status = 'contacted'`.
  * Requires a valid HQ session.
  *
  * @param quoteId - UUID of the quote_requests row to update
- * @returns `{ error }` — null on success
+ * @returns `{ error }` â€” null on success
  */
 export async function markQuoteContacted(quoteId: string): Promise<{ error: string | null }> {
   const auth = await assertHQAuth();
@@ -212,7 +212,7 @@ export async function markQuoteContacted(quoteId: string): Promise<{ error: stri
  * Requires a valid HQ session.
  *
  * @param accountId - UUID of the accounts row to update
- * @returns `{ error }` — null on success
+ * @returns `{ error }` â€” null on success
  */
 export async function enableDownload(accountId: string): Promise<{ error: string | null }> {
   const auth = await assertHQAuth();
@@ -256,7 +256,7 @@ export async function getHQStats(): Promise<{
   };
 }
 
-// ─── Download management ─────────────────────────────────────────────────────
+// â”€â”€â”€ Download management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface AppRelease {
   id: string;
@@ -319,10 +319,10 @@ export async function getCurrentReleases(): Promise<{
  * signed upload URL. The client uploads the binary directly to Supabase Storage
  * using this URL (bypassing the Next.js Server Action body-size limit entirely).
  *
- * Storage path is UUID-prefixed so every upload is an immutable, unique object —
+ * Storage path is UUID-prefixed so every upload is an immutable, unique object â€”
  * re-uploading the same version/filename never silently overwrites an existing binary.
  *
- * ── Supabase Storage Bucket Setup (Required) ───────────────────────────────────
+ * â”€â”€ Supabase Storage Bucket Setup (Required) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * 1. Go to Storage > New bucket in Supabase dashboard
  * 2. Name: "app-releases"
  * 3. Set as Private (uploads use signed URLs; reads can be public or signed)
@@ -331,15 +331,15 @@ export async function getCurrentReleases(): Promise<{
  *    - Allowed methods: PUT
  *    - Allowed headers: Content-Type, x-upsert
  * 5. The service-role key handles all uploads (RLS bypassed), so no storage
- *    policies are needed for INSERT — only the bucket must exist and be accessible.
+ *    policies are needed for INSERT â€” only the bucket must exist and be accessible.
  *
- * ── Troubleshooting ───────────────────────────────────────────────────────────
+ * â”€â”€ Troubleshooting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * If uploads fail with "Bucket not found", the bucket doesn't exist.
  * If uploads fail with CORS errors, the bucket CORS policy is misconfigured.
  * If uploads fail with "URL expired", the signed URL lifespan is too short
  * (default ~1 hour). Re-upload with a fresh signed URL.
  *
- * @returns `{ signedUrl, path, error }` — signedUrl and path are null on failure
+ * @returns `{ signedUrl, path, error }` â€” signedUrl and path are null on failure
  */
 export async function getSignedUploadUrl(
   platform: string,
@@ -358,7 +358,7 @@ export async function getSignedUploadUrl(
 
   const supabase = await createServiceClient();
 
-  // UUID prefix per upload → immutable, unique object key
+  // UUID prefix per upload â†’ immutable, unique object key
   const { randomUUID } = await import("crypto");
   const uniqueId = randomUUID();
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -455,7 +455,7 @@ export async function checkStorageBucket(): Promise<{ configured: boolean; error
 /**
  * Marks a release as the current release for its platform.
  *
- * Platform is derived server-side from the release row — the caller supplies only
+ * Platform is derived server-side from the release row â€” the caller supplies only
  * the release ID, preventing any client-supplied platform from affecting the wrong
  * platform's current state.
  *
@@ -466,7 +466,7 @@ export async function checkStorageBucket(): Promise<{ configured: boolean; error
  *
  * Requires a valid HQ session.
  * Requires the `set_current_release` SQL function and partial unique index to be
- * applied in Supabase — see ARCHITECTURE.md "App Releases" section.
+ * applied in Supabase â€” see ARCHITECTURE.md "App Releases" section.
  */
 export async function setCurrentRelease(
   releaseId: string
@@ -519,7 +519,7 @@ export async function deleteRelease(
   return { error: null };
 }
 
-// ─── Supplier Invite Management ─────────────────────────────────────────────
+// â”€â”€â”€ Supplier Invite Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface InviteWithQuote {
   id: string;
@@ -818,7 +818,7 @@ export async function getSupplierQuoteAnswers(quoteRequestId: string): Promise<{
   }
 }
 
-// ─── Supplier Quote Answers for HQ ─────────────────────────────────────────
+// â”€â”€â”€ Supplier Quote Answers for HQ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function getQuoteAnswersForHQ(quoteRequestId: string): Promise<{
   data: {
@@ -915,7 +915,7 @@ export async function linkInviteToAccount(
  * and records the unlock timestamp.
  *
  * @param branchId - UUID of the branch to unlock
- * @returns `{ error }` — null on success
+ * @returns `{ error }` â€” null on success
  */
 export async function manualUnlockBranch(branchId: string): Promise<{ error: string | null }> {
   const auth = await assertHQAuth();
@@ -940,7 +940,7 @@ export async function manualUnlockBranch(branchId: string): Promise<{ error: str
  * Fetches all accounts (pharmacy + supplier), ordered newest-first.
  * Requires a valid HQ session.
  *
- * @returns `{ data, error }` — data includes id, name, type, billing_status, download_enabled, created_at
+ * @returns `{ data, error }` â€” data includes id, name, type, billing_status, download_enabled, created_at
  */
 export async function getAllAccounts(): Promise<{
   data: {
@@ -962,22 +962,22 @@ export async function getAllAccounts(): Promise<{
   const supabase = await createServiceClient();
   const { data, error } = await supabase
     .from("accounts")
-    .select("id, name, type, billing_status, download_enabled, subscription_status, verified, created_at")
+    .select("id, name, type, billing_status, download_enabled, subscription_status, verified, suspended_at, suspension_reason, created_at")
     .order("created_at", { ascending: false });
 
   if (error) return { data: null, error: error.message };
   return {
     data: (data ?? []).map((a) => ({
       ...a,
-      suspended_at: null, // accounts.suspended_at may not exist
+      suspended_at: a.suspended_at ?? null,
     })),
     error: null,
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// HQ Intelligence — analytics, demographics, and drill-downs
-// ═══════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// HQ Intelligence â€” analytics, demographics, and drill-downs
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export interface RecentActivityEntry {
   id: string;
@@ -1070,9 +1070,8 @@ export async function getIntelligenceOverview(
       totalInstalls = installsResult.count ?? 0;
       periodNewAccounts = newAccountsResult.count ?? 0;
 
-      // Try to get suspended count - accounts.suspended_at may not exist
-      const { count } = await supabase.from("accounts").select("id", { count: "exact", head: true }).not("verified", "is", null);
-      suspendedCount = 0; // Default to 0 if column doesn't exist
+      const { count: suspendedQuery } = await supabase.from("accounts").select("id", { count: "exact", head: true }).not("suspended_at", "is", null);
+      suspendedCount = suspendedQuery ?? 0;
 
       // Try user_profiles for onboarding - table may not exist
       try {
@@ -1218,7 +1217,7 @@ export async function getRecentActivity(limit = 20): Promise<{
   return { data: entries, error: null };
 }
 
-// ─── Account list with demographics ───────────────────────────────────
+// â”€â”€â”€ Account list with demographics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface AccountRow {
   id: string;
@@ -1258,7 +1257,7 @@ export async function getAllAccountsWithProfiles(): Promise<{
   try {
     const accountsResult = await supabase
       .from("accounts")
-      .select("id, name, type, billing_status, download_enabled, subscription_status, verified, created_at")
+      .select("id, name, type, billing_status, download_enabled, subscription_status, verified, suspended_at, suspension_reason, created_at")
       .order("created_at", { ascending: false });
     accounts = accountsResult.data ?? [];
   } catch {
@@ -1312,7 +1311,7 @@ export async function getAllAccountsWithProfiles(): Promise<{
       download_enabled: a.download_enabled as boolean,
       subscription_status: a.subscription_status as string | null,
       verified: a.verified as boolean,
-      suspended: false, // accounts.suspended_at may not exist
+      suspended: Boolean(a.suspended_at),
       created_at: a.created_at as string,
       contact_name: (p?.contact_name as string | null) ?? null,
       phone: (p?.phone as string | null) ?? null,
@@ -1330,7 +1329,7 @@ export async function getAllAccountsWithProfiles(): Promise<{
   return { data, error: null };
 }
 
-// ─── Demographics breakdown ────────────────────────────────────────────
+// â”€â”€â”€ Demographics breakdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface DemographicBucket {
   label: string;
@@ -1412,7 +1411,7 @@ export async function getDemographicsBreakdown(): Promise<{
   };
 }
 
-// ─── Account drill-down ────────────────────────────────────────────────
+// â”€â”€â”€ Account drill-down â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface BranchDetail {
   id: string;
@@ -1633,9 +1632,9 @@ export async function getAccountDetail(accountId: string): Promise<{
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// HQ Account Controls — granular management
-// ═══════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// HQ Account Controls â€” granular management
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 /**
  * Updates an account's core fields and its profile row in one call.
@@ -1713,10 +1712,9 @@ export async function suspendAccount(
   if (!accountId || typeof accountId !== "string") return { error: "Invalid account ID." };
 
   const supabase = await createServiceClient();
-  // suspended_at may not exist - use verified=false as suspension indicator
   const { error } = await supabase
     .from("accounts")
-    .update({ verified: false })
+    .update({ suspended_at: new Date().toISOString(), suspension_reason: reason || null })
     .eq("id", accountId);
   if (error) return { error: error.message };
   return { error: null };
@@ -1728,10 +1726,9 @@ export async function unsuspendAccount(accountId: string): Promise<{ error: stri
   if (!accountId || typeof accountId !== "string") return { error: "Invalid account ID." };
 
   const supabase = await createServiceClient();
-  // suspended_at may not exist - just clear verification status instead
   const { error } = await supabase
     .from("accounts")
-    .update({ verified: true })
+    .update({ suspended_at: null, suspension_reason: null })
     .eq("id", accountId);
   if (error) return { error: error.message };
   return { error: null };
@@ -1822,13 +1819,13 @@ export async function resetBranchSubscription(branchId: string): Promise<{ error
   return { error: null };
 }
 
-// ─── Operator management ───────────────────────────────────────────────
+// â”€â”€â”€ Operator management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const OPERATOR_ROLES = ["cashier", "pharmacist_in_charge", "owner"] as const;
 
 /**
  * Adds an operator to a branch. The PIN is hashed with SHA-256, matching
- * the desktop's `session.ts`/`Manage.tsx` scheme — the raw PIN is never
+ * the desktop's `session.ts`/`Manage.tsx` scheme â€” the raw PIN is never
  * stored. Requires a valid HQ session.
  */
 export async function addOperator(
@@ -1898,7 +1895,7 @@ export async function setOperatorRole(operatorId: string, role: string): Promise
   return { error: null };
 }
 
-// ─── HQ team management ────────────────────────────────────────────────
+// â”€â”€â”€ HQ team management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface HQAdminRow {
   id: string;
@@ -1997,14 +1994,19 @@ export async function setHQAdminDisabled(adminId: string, _disabled: boolean): P
   const auth = await assertHQAuth();
   if (auth.error) return { error: auth.error };
   if (!adminId || typeof adminId !== "string") return { error: "Invalid admin ID." };
+  const supabase = await createServiceClient();
 
-  // disabled column not in schema - this feature is a no-op for now
+  const { error } = await supabase
+    .from("hq_admins")
+    .update({ disabled: _disabled })
+    .eq("id", adminId);
+  if (error) return { error: error.message };
   return { error: null };
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// HQ Intelligence — Advanced Metrics
-// ═══════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// HQ Intelligence â€” Advanced Metrics
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export interface SyncHealthMetrics {
   totalBranches: number;
@@ -2256,7 +2258,7 @@ export async function getNetworkHealthMetrics(): Promise<{ data: NetworkHealthMe
     }
 
     // products.stock may not exist - default to 0 out of stock
-    const outOfStockProducts = 0;
+    const outOfStockProducts = batches.filter((b: any) => (b.quantity ?? 0) <= 0).length;
 
     const branchLocations = branches
       .filter((b: Record<string, unknown>) => b.lat != null && b.lng != null)
@@ -2302,17 +2304,17 @@ export async function getRevenueMetrics(periodDays: number): Promise<{ data: Rev
     const mtdStart = monthStartIso();
     const ytdStart = yearStartIso();
 
-    let allSales: { created_at: string; total: number }[] = [];
+    let allSales: { created_at: string; total: number; account_id: string | null }[] = [];
     let mtdSales: { total: number }[] = [];
     let ytdSales: { total: number }[] = [];
-    let accounts: { id: string; name: string; type: string }[] = [];
+    let accounts: { id: string; name: string; type: string; region?: string }[] = [];
 
     try {
       const results = await Promise.all([
-        supabase.from("sales").select("created_at, total").gte("created_at", periodStart),
+        supabase.from("sales").select("created_at, total, account_id").gte("created_at", periodStart),
         supabase.from("sales").select("total").gte("created_at", mtdStart),
         supabase.from("sales").select("total").gte("created_at", ytdStart),
-        supabase.from("accounts").select("id, name, type"),
+        supabase.from("accounts").select("id, name, type, region"),
       ]);
       allSales = results[0].data ?? [];
       mtdSales = results[1].data ?? [];
@@ -2342,10 +2344,10 @@ export async function getRevenueMetrics(periodDays: number): Promise<{ data: Rev
     const typeRevenueMap = new Map<string, number>();
     const accountRevenueMap = new Map<string, { name: string; revenue: number }>();
 
-    // sales.account_id may not exist - skip account-level attribution
     for (const s of allSales) {
-      const region = "Unknown";
-      const type = "unknown";
+      const accountInfo = accountMap.get(s.account_id ?? "");
+      const region = accountInfo?.region ?? "Unknown";
+      const type = accountInfo?.type ?? "unknown";
 
       const existingRegion = regionRevenueMap.get(region) || { amount: 0, count: 0 };
       regionRevenueMap.set(region, {
@@ -2354,6 +2356,12 @@ export async function getRevenueMetrics(periodDays: number): Promise<{ data: Rev
       });
 
       typeRevenueMap.set(type, (typeRevenueMap.get(type) ?? 0) + (Number(s.total) || 0));
+
+      if (s.account_id && accountInfo) {
+        const accEntry = accountRevenueMap.get(s.account_id) ?? { name: accountInfo.name, revenue: 0 };
+        accEntry.revenue += Number(s.total) || 0;
+        accountRevenueMap.set(s.account_id, accEntry);
+      }
     }
 
     const revenueByRegion = [...regionRevenueMap.entries()]
@@ -2681,9 +2689,9 @@ export async function getBranchIntelligenceMetrics(periodDays: number): Promise<
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // Billing & Subscription Management
-// ═══════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export interface SubscriptionPlan {
   id: string;
@@ -2998,7 +3006,7 @@ export async function getAccountBillingHistory(
 
 /**
  * Updates an account's subscription plan and/or status.
- * When a plan UUID is provided, max_branches is enforced — excess branches
+ * When a plan UUID is provided, max_branches is enforced â€” excess branches
  * (oldest by created_at) are set to "locked" status so they can't be used.
  * Requires a valid HQ session.
  */
@@ -3162,9 +3170,9 @@ export async function getAllBillingPayments(): Promise<{
   return { data, error: null };
 }
 
-// ═══════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // News / Blog Posts
-// ═══════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export interface NewsPost {
   id: string;
@@ -3394,9 +3402,9 @@ export async function toggleNewsPostPublish(
   return { error: null };
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// HQ Messaging — broadcast alerts to pharmacies and suppliers
-// ═══════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// HQ Messaging â€” broadcast alerts to pharmacies and suppliers
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export interface HQMessage {
   id: string;
@@ -3476,7 +3484,7 @@ export async function sendHQMessage(
       });
     }
   } catch {
-    // Non-fatal — notifications are best-effort
+    // Non-fatal â€” notifications are best-effort
   }
 
   return { error: null };
@@ -3516,9 +3524,9 @@ export async function deleteHQMessage(
   return { error: null };
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// HQ Audit Log — god-mode searchable action trail
-// ═══════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// HQ Audit Log â€” god-mode searchable action trail
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export interface AuditLogEntry {
   id: string;
@@ -3638,9 +3646,9 @@ export async function getAuditActionTypes(): Promise<{ data: string[]; error: st
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Market Intelligence — deep Palantir-level analytics
-// ═══════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// Market Intelligence â€” deep Palantir-level analytics
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export interface MarketIntelligenceMetrics {
   quoteFunnel: { status: string; count: number; conversionRate: number }[];
@@ -3751,7 +3759,7 @@ export async function getMarketIntelligence(periodDays: number): Promise<{ data:
     const convertedQuotes = quoteRequests.filter((q) => q.converted_to_order_id).length;
     const conversionRate = quoteRequests.length > 0 ? (convertedQuotes / quoteRequests.length) * 100 : 0;
 
-    // Supplier performance — group quotes by account (supplier)
+    // Supplier performance â€” group quotes by account (supplier)
     const supplierStats = new Map<string, { totalQuotes: number; convertedQuotes: number; totalResponseMs: number; responseCount: number; orderValue: number; productCounts: Map<string, number> }>();
     for (const q of quoteRequests) {
       if (!q.account_id) continue;
@@ -3912,9 +3920,9 @@ export async function getMarketIntelligence(periodDays: number): Promise<{ data:
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Logistics Intelligence — stock movements, transfers, expiry heatmap
-// ═══════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// Logistics Intelligence â€” stock movements, transfers, expiry heatmap
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export interface LogisticsMetrics {
   stockMovements: {
@@ -4171,9 +4179,9 @@ export async function getLogisticsIntelligence(periodDays: number): Promise<{ da
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// User Activity Intelligence — per-user, per-install, DAU/WAU
-// ═══════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// User Activity Intelligence â€” per-user, per-install, DAU/WAU
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export interface UserActivityMetrics {
   installStats: {
@@ -4251,7 +4259,7 @@ export async function getUserActivityMetrics(periodDays: number): Promise<{ data
     const accountMap = new Map(accounts.map((a) => [a.id, a]));
     const branchAccountMap = new Map(branches.map((b) => [b.id, b.account_id]));
 
-    // Install stats (platform column may not exist — skip breakdown if unavailable)
+    // Install stats (platform column may not exist â€” skip breakdown if unavailable)
     const windowsInstalls = 0;
     const macInstalls = 0;
     const linuxInstalls = 0;
@@ -4319,7 +4327,7 @@ export async function getUserActivityMetrics(periodDays: number): Promise<{ data
     }
     const hourlyActivity = [...hourlyActivityMap.entries()].map(([hour, actions]) => ({ hour: `${hour}:00`, actions }));
 
-    // User activity trail — per operator
+    // User activity trail â€” per operator
     const operatorLastSeen = new Map<string, string>();
     for (const al of activityLog) {
       if (!al.operator_id) continue;
@@ -4398,9 +4406,9 @@ export async function getUserActivityMetrics(periodDays: number): Promise<{ data
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// PDF Report Generation — filtered intelligence reports
-// ═══════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// PDF Report Generation â€” filtered intelligence reports
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export interface ReportFilters {
   from_date?: string;
@@ -4428,7 +4436,7 @@ export async function generateIntelligenceReport(filters: ReportFilters): Promis
     const users = userResult.data;
 
     const now = new Date().toISOString();
-    const reportTitle = `Cervos Intelligence Report — ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`;
+    const reportTitle = `Cervos Intelligence Report â€” ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`;
 
     const sections = filters.sections ?? ["summary", "revenue", "products", "users", "logistics"];
     const lines: string[] = [
@@ -4437,13 +4445,13 @@ export async function generateIntelligenceReport(filters: ReportFilters): Promis
       `Filters: from=${filters.from_date ?? "all"} to=${filters.to_date ?? "all"} region=${filters.region ?? "all"}`,
       `Account=${filters.account_id ?? "all"} Branch=${filters.branch_id ?? "all"}`,
       ``,
-      `═══════════════════════════════════════════════════════════════════`,
+      `â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•`,
       ``,
     ];
 
     if (sections.includes("summary")) {
       lines.push(`NETWORK SUMMARY`);
-      lines.push(`───────────────────────────────────────────────────────────`);
+      lines.push(`â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€`);
       if (market) {
         lines.push(`Total Revenue:   TZS ${market.marketSummary.totalRevenue.toLocaleString()}`);
         lines.push(`Total Orders:    ${market.marketSummary.totalOrders.toLocaleString()}`);
@@ -4478,13 +4486,13 @@ export async function generateIntelligenceReport(filters: ReportFilters): Promis
 
     if (sections.includes("revenue") && market) {
       lines.push(`TOP SUPPLIERS BY REVENUE`);
-      lines.push(`───────────────────────────────────────────────────────────`);
+      lines.push(`â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€`);
       for (const s of market.supplierPerformance.slice(0, 15)) {
         lines.push(`${s.supplierName.padEnd(30)} TZS ${s.totalOrderValue.toLocaleString().padStart(12)} | ${s.conversionRate}% conv | ${s.totalQuotes} quotes`);
       }
       lines.push(``);
       lines.push(`ORDER TRENDS (last ${market.orderTrends.length} days)`);
-      lines.push(`───────────────────────────────────────────────────────────`);
+      lines.push(`â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€`);
       for (const t of market.orderTrends.slice(-30)) {
         lines.push(`${t.date}  ${String(t.orderCount).padStart(6)} orders  TZS ${t.revenue.toLocaleString().padStart(12)}`);
       }
@@ -4493,9 +4501,9 @@ export async function generateIntelligenceReport(filters: ReportFilters): Promis
 
     if (sections.includes("products") && market) {
       lines.push(`TOP 30 PRODUCTS BY REVENUE`);
-      lines.push(`───────────────────────────────────────────────────────────`);
+      lines.push(`â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€`);
       lines.push(`#   Product                        Units      Revenue          Avg Price`);
-      lines.push(`───────────────────────────────────────────────────────────`);
+      lines.push(`â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€`);
       market.productPerformance.slice(0, 30).forEach((p, i) => {
         lines.push(`${String(i + 1).padStart(2)}. ${p.genericName.padEnd(30)} ${String(p.unitsSold).padStart(8)}  TZS ${p.revenue.toLocaleString().padStart(14)}  TZS ${String(p.avgPrice).padStart(10)}`);
       });
@@ -4503,8 +4511,8 @@ export async function generateIntelligenceReport(filters: ReportFilters): Promis
     }
 
     if (sections.includes("logistics") && logistics) {
-      lines.push(`EXPIRY ALERT — CRITICAL (< 30 days)`);
-      lines.push(`───────────────────────────────────────────────────────────`);
+      lines.push(`EXPIRY ALERT â€” CRITICAL (< 30 days)`);
+      lines.push(`â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€`);
       const critical = logistics.expiryHeatmap.filter((e) => e.status === "critical" || e.status === "expired").slice(0, 20);
       if (critical.length === 0) {
         lines.push(`No critical expiry batches.`);
@@ -4515,7 +4523,7 @@ export async function generateIntelligenceReport(filters: ReportFilters): Promis
       }
       lines.push(``);
       lines.push(`OUT-OF-STOCK PRODUCTS`);
-      lines.push(`───────────────────────────────────────────────────────────`);
+      lines.push(`â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€`);
       if (logistics.stockAlertsSummary.outOfStockProducts.length === 0) {
         lines.push(`No out-of-stock products.`);
       } else {
@@ -4525,7 +4533,7 @@ export async function generateIntelligenceReport(filters: ReportFilters): Promis
       }
       lines.push(``);
       lines.push(`REORDER RECOMMENDATIONS`);
-      lines.push(`───────────────────────────────────────────────────────────`);
+      lines.push(`â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€`);
       for (const r of logistics.reorderRecommendations.filter((r) => r.urgency !== "ok").slice(0, 20)) {
         lines.push(`${r.genericName.padEnd(30)} ${String(r.daysOfStockRemaining).padStart(5)}d left  stock: ${String(r.currentStock).padStart(6)}  daily: ${r.avgDailyUsage.toFixed(1)} [${r.urgency}]`);
       }
@@ -4534,24 +4542,24 @@ export async function generateIntelligenceReport(filters: ReportFilters): Promis
 
     if (sections.includes("users") && users) {
       lines.push(`TOP 20 OPERATORS BY ACTIVITY`);
-      lines.push(`───────────────────────────────────────────────────────────`);
+      lines.push(`â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€`);
       for (const u of users.operatorStats.topOperatorsByActivity.slice(0, 20)) {
         lines.push(`${u.name.padEnd(25)} ${u.branchName.padEnd(20)} ${String(u.actionCount).padStart(6)} actions`);
       }
       lines.push(``);
       lines.push(`USER ACTIVITY TRAIL (recent)`);
-      lines.push(`───────────────────────────────────────────────────────────`);
+      lines.push(`â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€`);
       for (const u of users.userActivityTrail.slice(0, 30)) {
         lines.push(`${u.name.padEnd(25)} ${u.branchName.padEnd(20)} last seen: ${u.lastSeen}  ${u.actionCount} actions`);
         for (const a of u.recentActions.slice(0, 3)) {
-          lines.push(`  └─ ${a.action} ${a.detail ? `| ${a.detail.slice(0, 60)}` : ""}`);
+          lines.push(`  â””â”€ ${a.action} ${a.detail ? `| ${a.detail.slice(0, 60)}` : ""}`);
         }
       }
       lines.push(``);
     }
 
-    lines.push(`═══════════════════════════════════════════════════════════════════`);
-    lines.push(`Report generated by Cervos HQ Console · ${now}`);
+    lines.push(`â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•`);
+    lines.push(`Report generated by Cervos HQ Console Â· ${now}`);
     lines.push(`This report contains confidential business intelligence.`);
 
     return { data: lines.join("\n"), error: null };
@@ -4560,9 +4568,9 @@ export async function generateIntelligenceReport(filters: ReportFilters): Promis
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// HQ Alerts — critical network-wide events requiring attention
-// ═══════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// HQ Alerts â€” critical network-wide events requiring attention
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 export interface HQAlert {
   id: string;
@@ -4609,7 +4617,7 @@ export async function getHQAlerts(): Promise<{ data: HQAlert[]; error: string | 
       tickets = (ticketsResult.data ?? []) as typeof tickets;
     } catch { /* individual failures */ }
 
-    // 1. CRITICAL — Batches expiring within 30 days
+    // 1. CRITICAL â€” Batches expiring within 30 days
     const thirtyDaysFromNow = now + 30 * dayMs;
     const criticalExpiry: Map<string, number> = new Map();
     for (const bat of batches) {
@@ -4627,14 +4635,14 @@ export async function getHQAlerts(): Promise<{ data: HQAlert[]; error: string | 
         severity: "critical",
         category: "expiry",
         title: `${criticalExpiry.size} branch${criticalExpiry.size > 1 ? "es" : ""} with expiring stock`,
-        description: "Batches expiring within 30 days — immediate FEFO action required",
+        description: "Batches expiring within 30 days â€” immediate FEFO action required",
         count: [...criticalExpiry.values()].reduce((a, b) => a + b, 0),
         route: "/hq/intelligence",
         createdAt: new Date().toISOString(),
       });
     }
 
-    // 2. OUT OF STOCK — products with zero quantity
+    // 2. OUT OF STOCK â€” products with zero quantity
     const oosMap: Map<string, number> = new Map();
     for (const bat of batches) {
       if ((bat.quantity as number) === 0) {
@@ -4648,14 +4656,14 @@ export async function getHQAlerts(): Promise<{ data: HQAlert[]; error: string | 
         severity: "critical",
         category: "stock",
         title: `${oosMap.size} product${oosMap.size > 1 ? "s" : ""} out of stock`,
-        description: "Zero-quantom batches detected across branches — replenishment needed",
+        description: "Zero-quantom batches detected across branches â€” replenishment needed",
         count: oosMap.size,
         route: "/hq/intelligence",
         createdAt: new Date().toISOString(),
       });
     }
 
-    // 3. SYNC — branches not synced in 7+ days
+    // 3. SYNC â€” branches not synced in 7+ days
     const staleBranches: string[] = [];
     for (const b of branches) {
       const lastSync = b.last_synced_at as string | null;
@@ -4668,14 +4676,14 @@ export async function getHQAlerts(): Promise<{ data: HQAlert[]; error: string | 
         severity: "warning",
         category: "sync",
         title: `${staleBranches.length} branch${staleBranches.length > 1 ? "es" : ""} stale`,
-        description: `No sync in 7+ days — ${staleBranches.slice(0, 3).join(", ")}${staleBranches.length > 3 ? "…" : ""}`,
+        description: `No sync in 7+ days â€” ${staleBranches.slice(0, 3).join(", ")}${staleBranches.length > 3 ? "â€¦" : ""}`,
         count: staleBranches.length,
         route: "/hq/network",
         createdAt: new Date().toISOString(),
       });
     }
 
-    // 4. BILLING — inactive/past-due accounts
+    // 4. BILLING â€” inactive/past-due accounts
     const inactiveAccounts: string[] = [];
     for (const a of accounts) {
       const bs = a.billing_status as string;
@@ -4687,7 +4695,7 @@ export async function getHQAlerts(): Promise<{ data: HQAlert[]; error: string | 
         severity: "warning",
         category: "billing",
         title: `${inactiveAccounts.length} account${inactiveAccounts.length > 1 ? "s" : ""} payment issue`,
-        description: `${inactiveAccounts.slice(0, 3).join(", ")}${inactiveAccounts.length > 3 ? "…" : ""}`,
+        description: `${inactiveAccounts.slice(0, 3).join(", ")}${inactiveAccounts.length > 3 ? "â€¦" : ""}`,
         count: inactiveAccounts.length,
         route: "/hq/billing",
         createdAt: new Date().toISOString(),
@@ -4702,7 +4710,7 @@ export async function getHQAlerts(): Promise<{ data: HQAlert[]; error: string | 
         severity: "warning",
         category: "account",
         title: `${unverifiedAccounts.length} unverified account${unverifiedAccounts.length > 1 ? "s" : ""}`,
-        description: "Accounts pending verification — review required",
+        description: "Accounts pending verification â€” review required",
         count: unverifiedAccounts.length,
         route: "/hq/accounts",
         createdAt: new Date().toISOString(),
@@ -4727,7 +4735,7 @@ export async function getHQAlerts(): Promise<{ data: HQAlert[]; error: string | 
       });
     }
 
-    // 7. INFO — new accounts this week
+    // 7. INFO â€” new accounts this week
     const oneWeekAgo = new Date(now - 7 * dayMs).toISOString();
     const newAccounts = (accounts as Array<Record<string, unknown>>).filter((a) => {
       const created = a.created_at as string | null;
@@ -4739,7 +4747,7 @@ export async function getHQAlerts(): Promise<{ data: HQAlert[]; error: string | 
         severity: "info",
         category: "account",
         title: `${newAccounts.length} new account${newAccounts.length > 1 ? "s" : ""} this week`,
-        description: "New registrations — monitor onboarding completion",
+        description: "New registrations â€” monitor onboarding completion",
         count: newAccounts.length,
         route: "/hq/accounts",
         createdAt: new Date().toISOString(),

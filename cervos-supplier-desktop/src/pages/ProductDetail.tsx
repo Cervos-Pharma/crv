@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { fetchProduct, updateProduct } from '../lib/queries'
-import { Product } from '../lib/types'
+import { Product, PHARMACY_CATEGORIES, FORMULATIONS } from '../lib/types'
 import StockBadge from '../components/StockBadge'
 import { showToast } from '../components/ToastContainer'
 
@@ -12,12 +12,18 @@ export default function ProductDetail() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [formData, setFormData] = useState({
-    name: '',
+    generic_name: '',
+    brand_name: '',
     description: '',
     sku: '',
+    barcode: '',
     category: '',
+    formulation: '',
+    requires_prescription: false,
     price: 0,
     stock_quantity: 0,
+    low_stock_threshold: 10,
+    notify_threshold: 5,
   })
 
   useEffect(() => {
@@ -33,12 +39,18 @@ export default function ProductDetail() {
       if (data) {
         setProduct(data)
         setFormData({
-          name: data.name,
+          generic_name: data.generic_name || data.name || '',
+          brand_name: data.brand_name || '',
           description: data.description,
           sku: data.sku,
+          barcode: data.barcode || '',
           category: data.category,
+          formulation: data.formulation || '',
+          requires_prescription: data.requires_prescription || false,
           price: data.price,
           stock_quantity: data.stock_quantity,
+          low_stock_threshold: data.low_stock_threshold || 10,
+          notify_threshold: data.notify_threshold || 5,
         })
       }
     } catch (error) {
@@ -48,9 +60,10 @@ export default function ProductDetail() {
     }
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
-    setFormData({ ...formData, [name]: name === 'price' || name === 'stock_quantity' ? parseFloat(value) || 0 : value })
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target
+    const checked = (e.target as HTMLInputElement).checked
+    setFormData({ ...formData, [name]: type === 'checkbox' ? checked : type === 'number' ? parseFloat(value) || 0 : value })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -61,7 +74,7 @@ export default function ProductDetail() {
     try {
       const updated = await updateProduct(id, {
         ...formData,
-        stock_status: formData.stock_quantity > 10 ? 'in_stock' : formData.stock_quantity > 0 ? 'low_stock' : 'out_of_stock',
+        stock_status: formData.stock_quantity > (formData.low_stock_threshold || 10) ? 'in_stock' : formData.stock_quantity > 0 ? 'low_stock' : 'out_of_stock',
       })
       setProduct(updated)
       showToast('success', 'Product updated successfully')
@@ -103,27 +116,58 @@ export default function ProductDetail() {
 
       <div className="bg-surface-100 rounded-xl border border-surface-300 p-6">
         <h2 className="text-xl font-semibold text-white mb-6">Edit Product</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto">
           <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Name</label>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Generic Name</label>
             <input
               type="text"
-              name="name"
-              value={formData.name}
+              name="generic_name"
+              value={formData.generic_name}
               onChange={handleChange}
               className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Description</label>
-            <textarea
-              name="description"
-              rows={4}
-              value={formData.description}
+            <label className="block text-sm font-medium text-gray-400 mb-2">Brand Name</label>
+            <input
+              type="text"
+              name="brand_name"
+              value={formData.brand_name}
               onChange={handleChange}
-              className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent resize-none"
+              className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Category</label>
+              <select
+                name="category"
+                value={formData.category}
+                onChange={handleChange as any}
+                className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white focus:outline-none focus:border-accent"
+              >
+                <option value="">Select category</option>
+                {PHARMACY_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Formulation</label>
+              <select
+                name="formulation"
+                value={formData.formulation}
+                onChange={handleChange as any}
+                className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white focus:outline-none focus:border-accent"
+              >
+                <option value="">Select formulation</option>
+                {FORMULATIONS.map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -138,20 +182,20 @@ export default function ProductDetail() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Category</label>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Barcode</label>
               <input
                 type="text"
-                name="category"
-                value={formData.category}
+                name="barcode"
+                value={formData.barcode}
                 onChange={handleChange}
                 className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Price ($)</label>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Price (TZS)</label>
               <input
                 type="number"
                 name="price"
@@ -163,7 +207,7 @@ export default function ProductDetail() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Stock Quantity</label>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Stock Qty</label>
               <input
                 type="number"
                 name="stock_quantity"
@@ -173,6 +217,52 @@ export default function ProductDetail() {
                 className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Description</label>
+              <textarea
+                name="description"
+                rows={1}
+                value={formData.description}
+                onChange={handleChange}
+                className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent resize-none"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Low Stock Threshold</label>
+              <input
+                type="number"
+                name="low_stock_threshold"
+                min="0"
+                value={formData.low_stock_threshold}
+                onChange={handleChange}
+                className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Notify Threshold</label>
+              <input
+                type="number"
+                name="notify_threshold"
+                min="0"
+                value={formData.notify_threshold}
+                onChange={handleChange}
+                className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              name="requires_prescription"
+              checked={formData.requires_prescription}
+              onChange={(e) => setFormData({ ...formData, requires_prescription: e.target.checked })}
+              className="w-4 h-4 rounded border-surface-300 text-accent focus:ring-accent"
+            />
+            <label className="text-sm text-gray-400">Requires Prescription</label>
           </div>
 
           <div className="pt-4 flex gap-3">
@@ -183,7 +273,7 @@ export default function ProductDetail() {
             >
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
-            <Link to={`/inventory/${product.id}`} className="px-6 py-2.5 bg-surface-200 hover:bg-surface-300 text-white rounded-lg font-medium transition-colors">
+            <Link to={`/catalog/${product.id}`} className="px-6 py-2.5 bg-surface-200 hover:bg-surface-300 text-white rounded-lg font-medium transition-colors">
               View Inventory
             </Link>
           </div>

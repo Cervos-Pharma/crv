@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../lib/store'
-import { Fe } from '../lib/database'
+import { queryDb } from '../lib/database'
 import Logo from './Logo'
 
 export default function TopBar() {
@@ -11,10 +11,10 @@ export default function TopBar() {
 
   useEffect(() => {
     async function loadSubscription() {
-      const result = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
+      const result = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'")
       if (result.length > 0) {
         const bid = JSON.parse(result[0].value)
-        const branchResult = await Fe('SELECT subscription_status FROM branches WHERE id = ?', [bid])
+        const branchResult = await queryDb('SELECT subscription_status FROM branches WHERE id = ?', [bid])
         if (branchResult.length > 0) {
           setSubscriptionStatus(branchResult[0].subscription_status || 'trial')
         }

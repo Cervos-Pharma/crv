@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import type { BranchIntelligenceMetrics } from "@/lib/actions/hq";
 
 interface Props {
@@ -10,80 +10,102 @@ interface Props {
 export default function BranchMap({ branches }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<unknown>(null);
+  const markersLayerRef = useRef<unknown>(null);
+  const leafletLoadedRef = useRef(false);
   const [mapError, setMapError] = useState<string | null>(null);
 
+  const validBranches = useMemo(
+    () => branches.filter((b) => b.lat != null && b.lng != null),
+    [branches]
+  );
+
+  // Init map once
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
-    if (branches.length === 0) return;
 
-    let isMounted = true;
+    let cancelled = false;
 
     (async () => {
       try {
         const L = (await import("leaflet")).default;
-        const map = L.map(mapRef.current!).setView([-6.7924, 39.2083], 6);
+        if (cancelled || !mapRef.current || mapInstanceRef.current) return;
+
+        const map = L.map(mapRef.current).setView([-6.7924, 39.2083], 6);
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           attribution: "&copy; OpenStreetMap contributors",
           maxZoom: 18,
         }).addTo(map);
 
-        if (!isMounted) return;
-
-        const validBranches = branches.filter((b) => b.lat != null && b.lng != null);
-        if (validBranches.length === 0) {
-          setMapError("No branches have coordinates to display on the map.");
-          return;
-        }
-
-        const maxRevenue = Math.max(...validBranches.map((b) => b.revenue), 1);
-
-        for (const branch of validBranches) {
-          const radius = Math.max(4, Math.min(20, (branch.revenue / maxRevenue) * 20));
-          const color = branch.revenue > maxRevenue * 0.5 ? "#146C2E" : branch.revenue > maxRevenue * 0.2 ? "#0061A4" : "#B3261E";
-
-          const marker = L.circleMarker([branch.lat!, branch.lng!], {
-            radius,
-            fillColor: color,
-            color: "#fff",
-            weight: 1.5,
-            opacity: 1,
-            fillOpacity: 0.75,
-          }).addTo(map);
-
-          marker.bindPopup(`
-            <div style="font-family: sans-serif; min-width: 160px">
-              <strong style="font-size: 14px">${branch.branchName}</strong><br/>
-              <span style="color: #666; font-size: 12px">${branch.accountName}</span><br/>
-              <hr style="margin: 6px 0"/>
-              <span style="font-size: 13px"><strong>Revenue:</strong> TZS ${branch.revenue.toLocaleString()}</span><br/>
-              <span style="font-size: 12px; color: ${color}">&#9679; ${radius < 8 ? "Low" : radius < 15 ? "Medium" : "Top"} performer</span>
-            </div>
-          `);
-        }
-
-        if (validBranches.length > 1) {
-          const group = L.featureGroup(
-            validBranches.map((b) =>
-              L.circleMarker([b.lat!, b.lng!], { radius: 0.1, interactive: false })
-            )
-          );
-          map.fitBounds(group.getBounds().pad(0.1));
-        }
-
         mapInstanceRef.current = map;
-      } catch (err) {
-        if (isMounted) setMapError("Failed to load map. Please try again.");
+        markersLayerRef.current = L.layerGroup().addTo(map);
+        leafletLoadedRef.current = true;
+      } catch {
+        if (!cancelled) setMapError("Failed to load map. Please try again.");
       }
     })();
 
     return () => {
-      isMounted = false;
+      cancelled = true;
       if (mapInstanceRef.current) {
         (mapInstanceRef.current as { remove: () => void }).remove();
         mapInstanceRef.current = null;
+        markersLayerRef.current = null;
+        leafletLoadedRef.current = false;
       }
     };
-  }, [branches]);
+  }, []);
+
+  // Sync markers when branches change
+  useEffect(() => {
+    if (!leafletLoadedRef.current || !mapInstanceRef.current || !markersLayerRef.current) return;
+    if (validBranches.length === 0) {
+      setMapError("No branches have coordinates to display on the map.");
+      return;
+    }
+
+    (async () => {
+      const L = (await import("leaflet")).default;
+      const layer = markersLayerRef.current as ReturnType<typeof L.layerGroup>;
+      if (!layer) return;
+
+      layer.clearLayers();
+
+      const maxRevenue = Math.max(...validBranches.map((b) => b.revenue), 1);
+
+      for (const branch of validBranches) {
+        const radius = Math.max(4, Math.min(20, (branch.revenue / maxRevenue) * 20));
+        const color = branch.revenue > maxRevenue * 0.5 ? "#146C2E" : branch.revenue > maxRevenue * 0.2 ? "#0061A4" : "#B3261E";
+
+        const marker = L.circleMarker([branch.lat!, branch.lng!], {
+          radius,
+          fillColor: color,
+          color: "#fff",
+          weight: 1.5,
+          opacity: 1,
+          fillOpacity: 0.75,
+        }).addTo(layer);
+
+        marker.bindPopup(`
+          <div style="font-family:system-ui,sans-serif;min-width:160px">
+            <strong style="font-size:14px">${branch.branchName}</strong><br/>
+            <span style="color:#666;font-size:12px">${branch.accountName}</span><br/>
+            <hr style="margin:6px 0"/>
+            <span style="font-size:13px"><strong>Revenue:</strong> TZS ${branch.revenue.toLocaleString()}</span><br/>
+            <span style="font-size:12px;color:${color}">&#9679; ${radius < 8 ? "Low" : radius < 15 ? "Medium" : "Top"} performer</span>
+          </div>
+        `);
+      }
+
+      if (validBranches.length > 1) {
+        const group = L.featureGroup(
+          validBranches.map((b) =>
+            L.circleMarker([b.lat!, b.lng!], { radius: 0.1, interactive: false })
+          )
+        );
+        (mapInstanceRef.current as { fitBounds: (b: unknown, o?: unknown) => void }).fitBounds(group.getBounds().pad(0.1));
+      }
+    })();
+  }, [validBranches]);
 
   if (branches.length === 0) {
     return (
@@ -118,7 +140,7 @@ export default function BranchMap({ branches }: Props) {
           <span className="font-body-sm text-on-surface-variant text-xs">Circle size = revenue</span>
         </div>
       </div>
-      <div ref={mapRef} className="w-full aspect-square max-h-[500px] rounded-lg overflow-hidden border border-outline-variant" style={{ zIndex: 0 }} />
+      <div ref={mapRef} className="w-full h-[500px] max-h-[600px] rounded-lg overflow-hidden border border-outline-variant" style={{ zIndex: 0 }} />
     </div>
   );
 }

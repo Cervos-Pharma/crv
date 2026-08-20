@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Fe } from '../lib/database'
+﻿import { useState, useEffect } from 'react'
+import { queryDb } from '../lib/database'
 import { fetchOperators, createOperator, updateOperator, deleteOperator } from '../lib/queries'
 import type { Operator } from '../types'
 
@@ -15,7 +15,7 @@ export default function Users() {
   }, [])
 
   async function loadOperators() {
-    const result = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
+    const result = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'")
     if (result.length > 0) {
       const bid = JSON.parse(result[0].value)
       setBranchId(bid)

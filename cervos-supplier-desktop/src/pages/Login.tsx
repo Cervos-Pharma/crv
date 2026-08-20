@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/hooks'
@@ -73,6 +73,8 @@ export default function Login() {
 
           if (profile.subscription_status === 'inactive' || profile.subscription_status === 'past_due') {
             setError('Your subscription is inactive. Please update your payment method.')
+            setLoading(false)
+            return
           }
 
           const supplierData = profile as Supplier
@@ -129,7 +131,7 @@ export default function Login() {
                 required
                 minLength={6}
                 className="w-full px-4 py-3 bg-surface border border-surface-300 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent"
-                placeholder="••••••••"
+                placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
               />
             </div>
 

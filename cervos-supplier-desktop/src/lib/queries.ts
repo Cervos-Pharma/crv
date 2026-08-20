@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+﻿import { supabase } from './supabase'
 import { Product, Order, Quote, Notification, AnalyticsData, Supplier, RemoteCommand } from './types'
 import { useSubscriptionStore } from './store'
 
@@ -102,12 +102,43 @@ export async function fetchPendingCommands(supplierId: string): Promise<RemoteCo
 }
 
 export async function acknowledgeCommand(commandId: string): Promise<void> {
+  const { data: cmd, error: fetchError } = await supabase
+    .from('remote_commands')
+    .select('*')
+    .eq('id', commandId)
+    .single()
+
+  if (fetchError) throw fetchError
+
+  if (cmd && cmd.type === 'product_update' && cmd.payload?.product_id) {
+    const updates: Record<string, unknown> = {}
+    if (cmd.payload.name) updates.name = cmd.payload.name
+    if (cmd.payload.generic_name) updates.generic_name = cmd.payload.generic_name
+    if (cmd.payload.brand_name !== undefined) updates.brand_name = cmd.payload.brand_name
+    if (cmd.payload.price !== undefined) updates.price = cmd.payload.price
+    if (cmd.payload.stock_quantity !== undefined) updates.stock_quantity = cmd.payload.stock_quantity
+    if (cmd.payload.description) updates.description = cmd.payload.description
+    if (cmd.payload.formulation) updates.formulation = cmd.payload.formulation
+    if (cmd.payload.barcode !== undefined) updates.barcode = cmd.payload.barcode
+    if (cmd.payload.requires_prescription !== undefined) updates.requires_prescription = cmd.payload.requires_prescription
+    if (cmd.payload.low_stock_threshold !== undefined) updates.low_stock_threshold = cmd.payload.low_stock_threshold
+    if (cmd.payload.notify_threshold !== undefined) updates.notify_threshold = cmd.payload.notify_threshold
+    if (Object.keys(updates).length > 0) {
+      await supabase.from('products').update(updates).eq('id', cmd.payload.product_id)
+    }
+  }
+
   const { error } = await supabase
     .from('remote_commands')
     .update({ status: 'acknowledged' })
     .eq('id', commandId)
 
   if (error) throw error
+}
+
+export function createPollingInterval(supplierId: string, callback: () => void, intervalMs = 30000): () => void {
+  const id = setInterval(callback, intervalMs)
+  return () => clearInterval(id)
 }
 
 export async function fetchProducts(supplierId: string): Promise<Product[]> {

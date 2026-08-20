@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Fe, Pe } from '../lib/database'
-import { np, tp, runSyncCycle } from '../lib/sync'
+import { queryDb, executeDb } from '../lib/database'
+import { getDashboardStats, signOut, runSyncCycle } from '../lib/sync'
 import { useAuthStore } from '../lib/store'
 import { fetchOperators, createOperator, deleteOperator } from '../lib/queries'
 import type { Operator } from '../types'
@@ -19,6 +19,12 @@ export default function Settings() {
   const [newOpPin, setNewOpPin] = useState('')
   const [newOpRole, setNewOpRole] = useState<'admin' | 'operator'>('operator')
   const [branchId, setBranchId] = useState<string | null>(null)
+  const [showPinChange, setShowPinChange] = useState(false)
+  const [currentPin, setCurrentPin] = useState('')
+  const [newPin, setNewPin] = useState('')
+  const [confirmPin, setConfirmPin] = useState('')
+  const [pinError, setPinError] = useState('')
+  const [pinSuccess, setPinSuccess] = useState('')
 
   useEffect(() => {
     loadSettings()
@@ -31,15 +37,15 @@ export default function Settings() {
   }, [isAdmin])
 
   async function loadSettings() {
-    const nameResult = await Fe("SELECT value FROM app_settings WHERE key = 'pharmacy_name'")
+    const nameResult = await queryDb("SELECT value FROM app_settings WHERE key = 'pharmacy_name'")
     if (nameResult.length > 0) {
       setPharmacyName(JSON.parse(nameResult[0].value))
     }
-    const branchResult = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
+    const branchResult = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'")
     if (branchResult.length > 0) {
       setBranchId(JSON.parse(branchResult[0].value))
     }
-    const s = await np()
+    const s = await getDashboardStats()
     setStats(s)
   }
 
@@ -76,8 +82,30 @@ export default function Settings() {
     loadOperators()
   }
 
+  async function handleChangePin(e: React.FormEvent) {
+    e.preventDefault()
+    setPinError('')
+    setPinSuccess('')
+    if (!currentOperator) return
+    if (newPin.length < 4) { setPinError('PIN must be at least 4 digits'); return }
+    if (newPin !== confirmPin) { setPinError('PINs do not match'); return }
+    try {
+      const { validateOperatorPin, updateOperator } = await import('../lib/queries')
+      const valid = await validateOperatorPin(currentOperator.branch_id, currentPin)
+      if (!valid) { setPinError('Current PIN is incorrect'); return }
+      await updateOperator(currentOperator.id, { pin: newPin })
+      setPinSuccess('PIN changed successfully')
+      setCurrentPin('')
+      setNewPin('')
+      setConfirmPin('')
+      setTimeout(() => { setShowPinChange(false); setPinSuccess('') }, 1500)
+    } catch (err: any) {
+      setPinError(err.message || 'Failed to change PIN')
+    }
+  }
+
   async function handleSaveName() {
-    await Pe(
+    await executeDb(
       `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
       ['pharmacy_name', JSON.stringify(pharmacyName)]
     )
@@ -92,27 +120,27 @@ export default function Settings() {
         setSyncMessage(`Sync failed: ${result.message || 'unknown error'}`)
       } else {
         setSyncMessage(
-          `Synced at ${new Date().toLocaleTimeString()} — pulled ${result.pulled ?? 0}, pushed ${result.pushed ?? 0}`
+          `Synced at ${new Date().toLocaleTimeString()} â€” pulled ${result.pulled ?? 0}, pushed ${result.pushed ?? 0}`
         )
       }
     } catch (err: any) {
       setSyncMessage(`Sync failed: ${err.message}`)
     } finally {
-      const s = await np()
+      const s = await getDashboardStats()
       setStats(s)
       setIsSyncing(false)
     }
   }
 
   async function handleUnlink() {
-    await tp()
+    await signOut()
     logout()
     navigate('/login')
   }
 
   async function handleSignOut() {
     logout()
-    await tp()
+    await signOut()
     navigate('/login')
   }
 
@@ -355,11 +383,11 @@ export default function Settings() {
               onClick={async () => {
                 if (confirm('Export all data as JSON?')) {
                   const data = {
-                    products: await Fe('SELECT * FROM products'),
-                    batches: await Fe('SELECT * FROM batches'),
-                    sales: await Fe('SELECT * FROM sales'),
-                    operators: await Fe('SELECT * FROM operators'),
-                    settings: await Fe('SELECT * FROM app_settings'),
+                    products: await queryDb('SELECT * FROM products'),
+                    batches: await queryDb('SELECT * FROM batches'),
+                    sales: await queryDb('SELECT * FROM sales'),
+                    operators: await queryDb('SELECT * FROM operators'),
+                    settings: await queryDb('SELECT * FROM app_settings'),
                   }
                   const blob = new Blob([JSON.stringify(data, null, 2)], {
                     type: 'application/json',

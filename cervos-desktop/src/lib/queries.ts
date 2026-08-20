@@ -1,17 +1,17 @@
-import { Fe, Pe, Et } from './database'
+﻿import { queryDb, executeDb, generateId } from './database'
 import type { Operator, Branch } from '../types'
 
 export async function fetchOperator(id: string): Promise<Operator | null> {
-  const results = await Fe('SELECT * FROM operators WHERE id = ?', [id])
+  const results = await queryDb('SELECT * FROM operators WHERE id = ?', [id])
   return results.length > 0 ? results[0] : null
 }
 
 export async function fetchOperators(branchId: string): Promise<Operator[]> {
-  return Fe('SELECT * FROM operators WHERE branch_id = ? ORDER BY name', [branchId])
+  return queryDb('SELECT * FROM operators WHERE branch_id = ? ORDER BY name', [branchId])
 }
 
 export async function validateOperatorPin(branchId: string, pin: string): Promise<Operator | null> {
-  const results = await Fe('SELECT * FROM operators WHERE branch_id = ?', [branchId])
+  const results = await queryDb('SELECT * FROM operators WHERE branch_id = ?', [branchId])
   for (const op of results) {
     const hash = await hashPin(pin)
     if (op.pin_hash === hash) {
@@ -27,9 +27,9 @@ export async function createOperator(data: {
   pin: string
   role: 'admin' | 'operator'
 }): Promise<Operator> {
-  const id = Et()
+  const id = generateId()
   const pinHash = await hashPin(data.pin)
-  await Pe(
+  await executeDb(
     'INSERT INTO operators (id, branch_id, name, pin_hash, role, created_at) VALUES (?,?,?,?,?,?)',
     [id, data.branch_id, data.name, pinHash, data.role, new Date().toISOString()]
   )
@@ -38,23 +38,23 @@ export async function createOperator(data: {
 
 export async function updateOperator(id: string, data: { name?: string; pin?: string; role?: 'admin' | 'operator' }): Promise<void> {
   if (data.name !== undefined) {
-    await Pe('UPDATE operators SET name = ? WHERE id = ?', [data.name, id])
+    await executeDb('UPDATE operators SET name = ? WHERE id = ?', [data.name, id])
   }
   if (data.pin !== undefined) {
     const hash = await hashPin(data.pin)
-    await Pe('UPDATE operators SET pin_hash = ? WHERE id = ?', [hash, id])
+    await executeDb('UPDATE operators SET pin_hash = ? WHERE id = ?', [hash, id])
   }
   if (data.role !== undefined) {
-    await Pe('UPDATE operators SET role = ? WHERE id = ?', [data.role, id])
+    await executeDb('UPDATE operators SET role = ? WHERE id = ?', [data.role, id])
   }
 }
 
 export async function deleteOperator(id: string): Promise<void> {
-  await Pe('DELETE FROM operators WHERE id = ?', [id])
+  await executeDb('DELETE FROM operators WHERE id = ?', [id])
 }
 
 export async function fetchBranch(id: string): Promise<Branch | null> {
-  const results = await Fe('SELECT * FROM branches WHERE id = ?', [id])
+  const results = await queryDb('SELECT * FROM branches WHERE id = ?', [id])
   return results.length > 0 ? results[0] : null
 }
 
@@ -63,7 +63,7 @@ export async function fetchBranchSubscription(branchId: string): Promise<{
   subscription_tier: string
   grace_ends_at: string | null
 } | null> {
-  const results = await Fe('SELECT subscription_status, subscription_tier, grace_ends_at FROM branches WHERE id = ?', [branchId])
+  const results = await queryDb('SELECT subscription_status, subscription_tier, grace_ends_at FROM branches WHERE id = ?', [branchId])
   if (results.length === 0) return null
   const b = results[0]
   return {
@@ -79,13 +79,13 @@ export async function updateBranchSubscription(branchId: string, data: {
   grace_ends_at?: string
 }): Promise<void> {
   if (data.subscription_status !== undefined) {
-    await Pe('UPDATE branches SET subscription_status = ? WHERE id = ?', [data.subscription_status, branchId])
+    await executeDb('UPDATE branches SET subscription_status = ? WHERE id = ?', [data.subscription_status, branchId])
   }
   if (data.subscription_tier !== undefined) {
-    await Pe('UPDATE branches SET subscription_tier = ? WHERE id = ?', [data.subscription_tier, branchId])
+    await executeDb('UPDATE branches SET subscription_tier = ? WHERE id = ?', [data.subscription_tier, branchId])
   }
   if (data.grace_ends_at !== undefined) {
-    await Pe('UPDATE branches SET grace_ends_at = ? WHERE id = ?', [data.grace_ends_at, branchId])
+    await executeDb('UPDATE branches SET grace_ends_at = ? WHERE id = ?', [data.grace_ends_at, branchId])
   }
 }
 

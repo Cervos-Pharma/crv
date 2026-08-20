@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Fe } from '../lib/database'
+﻿import { useState, useEffect } from 'react'
+import { queryDb } from '../lib/database'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts'
 
 interface ReportData {
@@ -52,15 +52,15 @@ export default function Reports() {
   async function loadData() {
     setIsLoading(true)
     const [sales, batches, products] = await Promise.all([
-      Fe(`SELECT s.*, si.quantity, si.unit_price, p.generic_name FROM sales s
+      queryDb(`SELECT s.*, si.quantity, si.unit_price, p.generic_name FROM sales s
           LEFT JOIN sale_items si ON si.sale_id = s.id
           LEFT JOIN batches b ON b.id = si.batch_id
           LEFT JOIN products p ON p.id = b.product_id
           WHERE s.created_at >= ? AND s.created_at <= ?
           ORDER BY s.created_at DESC`,
         [`${dateFrom}T00:00:00`, `${dateTo}T23:59:59`]),
-      Fe('SELECT * FROM batches'),
-      Fe('SELECT * FROM products')
+      queryDb('SELECT * FROM batches'),
+      queryDb('SELECT * FROM products')
     ])
 
     const totalRevenue = sales.reduce((sum: number, s: any) => sum + (s.total || 0), 0)
@@ -143,15 +143,15 @@ export default function Reports() {
     if (!data) return
     const lines = [`Sales Report ${dateFrom} to ${dateTo}`, '']
     lines.push('=== SALES ===')
-    lines.push(`Total Revenue,$${data.sales.totalRevenue.toFixed(2)}`)
+    lines.push(`Total Revenue,$TZS {data.sales.totalRevenue.toLocaleString()}`)
     lines.push(`Total Transactions,${data.sales.totalSales}`)
-    lines.push(`Average Transaction,$${data.sales.avgTransaction.toFixed(2)}`)
-    lines.push(`Tax,$${data.sales.totalTax.toFixed(2)}`)
-    lines.push(`Discount,$${data.sales.totalDiscount.toFixed(2)}`, '')
+    lines.push(`Average Transaction,$TZS {data.sales.avgTransaction.toLocaleString()}`)
+    lines.push(`Tax,$TZS {data.sales.totalTax.toLocaleString()}`)
+    lines.push(`Discount,$TZS {data.sales.totalDiscount.toLocaleString()}`, '')
     lines.push('=== INVENTORY ===')
     lines.push(`Total Products,${data.inventory.totalProducts}`)
     lines.push(`Total Batches,${data.inventory.totalBatches}`)
-    lines.push(`Stock Value,$${data.inventory.totalStockValue.toFixed(2)}`)
+    lines.push(`Stock Value,$TZS {data.inventory.totalStockValue.toLocaleString()}`)
     lines.push(`Out of Stock,${data.inventory.outOfStock}`, '')
     lines.push('=== EXPIRY ===')
     lines.push(`Expired,${data.expiry.expired}`)
@@ -159,7 +159,7 @@ export default function Reports() {
     lines.push(`Expiring within 30 days,${data.expiry.expiring30days}`)
     lines.push(`Expiring within 90 days,${data.expiry.expiring90days}`, '')
     lines.push('Date,Revenue,Transactions')
-    data.sales.chartData.forEach(d => lines.push(`${d.label},${d.revenue.toFixed(2)},${d.sales}`))
+    data.sales.chartData.forEach(d => lines.push(`${d.label},TZS {d.revenue.toLocaleString()},${d.sales}`))
 
     const csv = lines.join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -207,7 +207,7 @@ export default function Reports() {
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="bg-surface-base border border-outline-variant rounded-xl p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Total Revenue</p>
-              <p className="font-headline text-2xl font-black text-primary mt-1">${data.sales.totalRevenue.toFixed(2)}</p>
+              <p className="font-headline text-2xl font-black text-primary mt-1">TZS {data.sales.totalRevenue.toLocaleString()}</p>
             </div>
             <div className="bg-surface-base border border-outline-variant rounded-xl p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Transactions</p>
@@ -215,15 +215,15 @@ export default function Reports() {
             </div>
             <div className="bg-surface-base border border-outline-variant rounded-xl p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Avg Transaction</p>
-              <p className="font-headline text-2xl font-black text-on-surface mt-1">${data.sales.avgTransaction.toFixed(2)}</p>
+              <p className="font-headline text-2xl font-black text-on-surface mt-1">TZS {data.sales.avgTransaction.toLocaleString()}</p>
             </div>
             <div className="bg-surface-base border border-outline-variant rounded-xl p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Tax Collected</p>
-              <p className="font-headline text-2xl font-black text-on-surface mt-1">${data.sales.totalTax.toFixed(2)}</p>
+              <p className="font-headline text-2xl font-black text-on-surface mt-1">TZS {data.sales.totalTax.toLocaleString()}</p>
             </div>
             <div className="bg-surface-base border border-outline-variant rounded-xl p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Discounts Given</p>
-              <p className="font-headline text-2xl font-black text-error mt-1">${data.sales.totalDiscount.toFixed(2)}</p>
+              <p className="font-headline text-2xl font-black text-error mt-1">TZS {data.sales.totalDiscount.toLocaleString()}</p>
             </div>
           </div>
 
@@ -236,7 +236,7 @@ export default function Reports() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis dataKey="label" tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} />
-                    <Tooltip formatter={(value: number) => [`$${value.toFixed(2)}`, 'Revenue']} />
+                    <Tooltip formatter={(value: number) => [`$TZS {value.toLocaleString()}`, 'Revenue']} />
                     <Line type="monotone" dataKey="revenue" stroke="#6366f1" strokeWidth={2} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -250,7 +250,7 @@ export default function Reports() {
                     <Pie data={data.sales.byPaymentMethod} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
                       {data.sales.byPaymentMethod.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                     </Pie>
-                    <Tooltip formatter={(value: number) => [`$${value.toFixed(2)}`, 'Revenue']} />
+                    <Tooltip formatter={(value: number) => [`$TZS {value.toLocaleString()}`, 'Revenue']} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -272,7 +272,7 @@ export default function Reports() {
             </div>
             <div className="bg-surface-base border border-outline-variant rounded-xl p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Stock Value</p>
-              <p className="font-headline text-2xl font-black text-secondary mt-1">${data.inventory.totalStockValue.toFixed(2)}</p>
+              <p className="font-headline text-2xl font-black text-secondary mt-1">TZS {data.inventory.totalStockValue.toLocaleString()}</p>
             </div>
             <div className="bg-surface-base border border-outline-variant rounded-xl p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Out of Stock</p>
@@ -280,7 +280,7 @@ export default function Reports() {
             </div>
           </div>
           <div className="bg-surface-base border border-outline-variant rounded-xl p-5">
-            <h3 className="font-headline font-bold text-on-surface mb-4">Low Stock Items (≤10 units)</h3>
+            <h3 className="font-headline font-bold text-on-surface mb-4">Low Stock Items (â‰¤10 units)</h3>
             {data.inventory.lowStockItems.length === 0 ? (
               <p className="text-on-surface-variant">No low stock items</p>
             ) : (
@@ -307,7 +307,7 @@ export default function Reports() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis type="number" tick={{ fontSize: 12 }} />
                   <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={120} />
-                  <Tooltip formatter={(value: number) => [`$${value.toFixed(2)}`, 'Revenue']} />
+                  <Tooltip formatter={(value: number) => [`$TZS {value.toLocaleString()}`, 'Revenue']} />
                   <Bar dataKey="revenue" fill="#6366f1" />
                 </BarChart>
               </ResponsiveContainer>
@@ -338,15 +338,15 @@ export default function Reports() {
               <p className="font-headline text-2xl font-black text-error mt-1">{data.expiry.expired}</p>
             </div>
             <div className="bg-surface-base border border-outline-variant rounded-xl p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Expiring ≤7 Days</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Expiring â‰¤7 Days</p>
               <p className="font-headline text-2xl font-black text-amber-500 mt-1">{data.expiry.expiring7days}</p>
             </div>
             <div className="bg-surface-base border border-outline-variant rounded-xl p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Expiring ≤30 Days</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Expiring â‰¤30 Days</p>
               <p className="font-headline text-2xl font-black text-amber-400 mt-1">{data.expiry.expiring30days}</p>
             </div>
             <div className="bg-surface-base border border-outline-variant rounded-xl p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Expiring ≤90 Days</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Expiring â‰¤90 Days</p>
               <p className="font-headline text-2xl font-black text-on-surface mt-1">{data.expiry.expiring90days}</p>
             </div>
           </div>

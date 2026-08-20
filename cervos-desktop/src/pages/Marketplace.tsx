@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Fe, Et } from '../lib/database'
+﻿import { useState } from 'react'
+import { queryDb, generateId } from '../lib/database'
 
 interface MarketplaceProduct {
   id: string
@@ -65,8 +65,8 @@ export default function Marketplace() {
 
   async function placeOrder() {
     if (cart.length === 0) return
-    const orderId = Et()
-    await Fe(
+    const orderId = generateId()
+    await queryDb(
       `INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
       ['last_marketplace_order', JSON.stringify({ id: orderId, date: new Date().toISOString(), total: getCartTotal(), items: cart.length })]
     )
@@ -125,7 +125,7 @@ export default function Marketplace() {
             </div>
             <p className="text-xs text-on-surface-variant mb-2">{product.category}</p>
             <div className="flex items-center justify-between">
-              <p className="font-headline text-lg font-black text-on-surface">${product.unit_price.toFixed(2)}</p>
+              <p className="font-headline text-lg font-black text-on-surface">TZS {product.unit_price.toLocaleString()}</p>
               <button
                 onClick={() => addToCart(product)}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-sm font-semibold hover:bg-primary/20"
@@ -167,7 +167,7 @@ export default function Marketplace() {
                     <div key={item.product.id} className="flex items-center justify-between p-3 bg-surface rounded-lg">
                       <div>
                         <p className="font-medium text-sm">{item.product.name}</p>
-                        <p className="text-xs text-on-surface-variant">${item.product.unit_price.toFixed(2)} x {item.quantity}</p>
+                        <p className="text-xs text-on-surface-variant">TZS {item.product.unit_price.toLocaleString()} x {item.quantity}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <button onClick={() => updateQuantity(item.product.id, item.quantity - 1)} className="w-6 h-6 rounded-full bg-outline-variant hover:bg-primary hover:text-white flex items-center justify-center text-sm">-</button>
@@ -183,7 +183,7 @@ export default function Marketplace() {
                 <div className="border-t border-outline-variant mt-4 pt-4">
                   <div className="flex justify-between font-headline text-lg font-black">
                     <span>Total</span>
-                    <span>${getCartTotal().toFixed(2)}</span>
+                    <span>TZS {getCartTotal().toLocaleString()}</span>
                   </div>
                   <button
                     onClick={placeOrder}

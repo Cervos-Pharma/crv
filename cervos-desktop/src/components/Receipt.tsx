@@ -1,4 +1,4 @@
-import type { Sale, SaleItem, Product, Batch } from "../types";
+﻿import type { Sale, SaleItem, Product, Batch } from "../types";
 
 interface ReceiptProps {
   sale: Sale;
@@ -55,25 +55,25 @@ export default function Receipt({
         </div>
         <div className="flex justify-between">
           <span>Tax</span>
-          <span>${sale.tax.toFixed(2)}</span>
+          <span>TZS {sale.tax.toLocaleString()}</span>
         </div>
         {sale.discount > 0 && (
           <div className="flex justify-between text-green-600">
             <span>Discount</span>
-            <span>-${sale.discount.toFixed(2)}</span>
+            <span>-TZS {sale.discount.toLocaleString()}</span>
           </div>
         )}
         <div className="flex justify-between font-bold border-t border-gray-300 pt-1">
           <span>Total</span>
-          <span>${sale.total.toFixed(2)}</span>
+          <span>TZS {sale.total.toLocaleString()}</span>
         </div>
         <div className="flex justify-between">
           <span>Tender</span>
-          <span>${sale.tender.toFixed(2)}</span>
+          <span>TZS {sale.tender.toLocaleString()}</span>
         </div>
         <div className="flex justify-between">
           <span>Change</span>
-          <span>${sale.change_due.toFixed(2)}</span>
+          <span>TZS {sale.change_due.toLocaleString()}</span>
         </div>
       </div>
 

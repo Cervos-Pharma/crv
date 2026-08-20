@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../lib/hooks'
-import { Fe } from '../lib/database'
+import { queryDb } from '../lib/database'
 import { fetchOperators, validateOperatorPin, fetchBranchSubscription } from '../lib/queries'
 import type { Operator } from '../types'
 import Logo from '../components/Logo'
@@ -21,13 +21,13 @@ export default function Login() {
   }, [])
 
   async function loadOperators() {
-    const centreResult = await Fe("SELECT value FROM app_settings WHERE key = 'centre_name'")
+    const centreResult = await queryDb("SELECT value FROM app_settings WHERE key = 'centre_name'")
     if (centreResult.length === 0) {
       navigate('/onboarding')
       return
     }
 
-    const result = await Fe("SELECT value FROM app_settings WHERE key = 'branch_id'")
+    const result = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'")
     if (result.length === 0) {
       navigate('/onboarding')
       return
@@ -52,7 +52,9 @@ export default function Login() {
         setError('Invalid PIN')
         return
       }
-      const sub = await fetchBranchSubscription(selectedOperator.id)
+      const branchRes = await queryDb("SELECT value FROM app_settings WHERE key = 'branch_id'")
+      const branchId = branchRes.length > 0 ? JSON.parse(branchRes[0].value) : null
+      const sub = branchId ? await fetchBranchSubscription(branchId) : null
       if (sub && (sub.subscription_status === 'inactive' || sub.subscription_status === 'past_due')) {
         if (sub.subscription_status === 'inactive' && sub.grace_ends_at) {
           const graceEnd = new Date(sub.grace_ends_at)
