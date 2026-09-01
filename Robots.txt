@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /auth
+
+Sitemap: https://cervos.online/sitemap.xml
+
+# Contact: hq@cervos.online
